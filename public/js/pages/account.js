@@ -2,6 +2,7 @@ import { html, mount, icon, toast, handleForm, go, fmtDate, fmtDateTime, num, un
 import { api } from '../api.js';
 import { state, refreshMe, user, nation } from '../store.js';
 import { generateKeyPair, sealAccessFile, unlockAccessFile, signChallenge, downloadText, passportSvgToPng } from '../accesskey.js';
+import { domusWallet, linkProof } from '../domus.js';
 import { accessOp, passportCheck, describe } from '../secure.js';
 
 const STEPS = ['Account', 'Email', 'Identity', 'Review', 'Passport'];
@@ -276,7 +277,9 @@ function issueFlow(view, reissue) {
   </div>`));
   handleForm(view.querySelector('[data-form]'), async ({ password }) => {
     const kp = await generateKeyPair();
-    const r = await api.post('/api/account/passport/issue', { password, publicKey: kp.publicKey });
+    const w = domusWallet(kp.pkcs8);
+    const chainProof = await linkProof(w, n.name, u.username, kp.keyId);
+    const r = await api.post('/api/account/passport/issue', { password, publicKey: kp.publicKey, chainAddress: w.address, chainProof });
     const fileText = await sealAccessFile({ ...kp, account: u.username, passportNo: r.passportNo, nation: n.name, password });
     await refreshMe();
     showKeyDownload(view, fileText, r);

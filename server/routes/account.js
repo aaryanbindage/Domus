@@ -36,7 +36,7 @@ export function me(req) {
   return {
     user: {
       ...publicUser(u), email: u.email, emailVerified: !!u.email_verified, legalName: u.legal_name,
-      hasKey: !!u.public_key, keyId: u.key_id, keyReissue: u.key_reissue, passportVersion: u.passport_version,
+      hasKey: !!u.public_key, keyId: u.key_id, chainAddress: u.chain_address, keyReissue: u.key_reissue, passportVersion: u.passport_version,
     },
     wallet: u.status === 'citizen' ? balance(u.id) : null,
     elevation: { passportUntil: req.sess?.passport_until || 0 },
@@ -191,7 +191,7 @@ r.post('/passport/issue', requireAuth, h(async (req, res) => {
   if (!validatePublicKey(pk)) throw bad('Invalid public key');
   // The Sigil wallet key is derived from the same .access key; the browser proves it holds it.
   const chainAddress = String(req.body.chainAddress || '');
-  if (!/^0x[0-9a-fA-F]{40}$/.test(chainAddress) || !verifyLink(u.username, keyId(pk), chainAddress, String(req.body.chainProof || ''))) throw bad('Invalid Sigil wallet proof');
+  if (!/^0x[0-9a-fA-F]{40}$/.test(chainAddress) || !verifyLink(u.username, keyId(pk), chainAddress, String(req.body.chainProof || ''))) throw bad('Invalid Domus wallet proof');
   await registerWallet(u.id, chainAddress);
   const result = tx(() => {
     const passportNo = u.passport_no || newPassportNumber();

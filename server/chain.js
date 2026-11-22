@@ -110,7 +110,7 @@ export const serialsHash = (serials) => (serials?.length ? keccak256(AbiCoder.de
 export const refOf = (text) => keccak256(toUtf8Bytes(text));
 
 /** The message a citizen proves control of their chain key with, when it is linked to their account. */
-export const linkMessage = (username, keyId) => `${NATION.name}: link my Sigil wallet to @${username}, key ${keyId}`;
+export const linkMessage = (username, keyId) => `${NATION.name}: link my Domus wallet to @${username}, key ${keyId}`;
 export const verifyLink = (username, keyId, address, sig) => {
   try { return verifyMessage(linkMessage(username, keyId), sig).toLowerCase() === String(address).toLowerCase(); } catch { return false; }
 };

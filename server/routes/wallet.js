@@ -3,13 +3,13 @@ import { q, audit } from '../db.js';
 import { NATION } from '../config.js';
 import { requireCitizen, requireAccess } from '../auth.js';
 import { h, str, int, bad, page } from '../util.js';
-import { balance, transfer, RARITIES } from '../ledger.js';
+import { balance, transfer, breakSigil, RARITIES } from '../ledger.js';
 
 const r = Router();
 
 r.get('/', requireCitizen, (req, res) => {
   const counts = Object.fromEntries(q.all('SELECT rarity, COUNT(*) c FROM tokens WHERE owner_id = ? GROUP BY rarity', req.user.id).map((x) => [x.rarity, x.c]));
-  res.json({ ...balance(req.user.id), byRarity: counts, currency: NATION.currency, rarities: RARITIES.map((x) => x.id) });
+  res.json({ ...balance(req.user.id), byRarity: counts, currency: NATION.currency, rarities: RARITIES.map((x) => ({ id: x.id, value: x.value, odds: x.odds })) });
 });
 
 r.get('/tokens', requireCitizen, (req, res) => {
@@ -49,5 +49,12 @@ r.post('/send', requireAccess('wallet.send', (req) => req.body.params), h(async 
   audit(req.user.id, 'transfer', { to: to.id, amount, ledger: entry.id });
   res.json({ ok: true, ledgerId: entry.id, hash: entry.hash, balance: balance(req.user.id) });
 }));
+
+// Break one Sigil into change at the Mint (value-neutral, so no .access signature needed).
+r.post('/break', requireCitizen, (req, res) => {
+  const result = breakSigil(req.user.id, int(req.body.serial, 'Sigil'), { reason: 'Exchanged by the holder' });
+  audit(req.user.id, 'sigil_broken', { serial: req.body.serial, ...result });
+  res.json({ ok: true, ...result, balance: balance(req.user.id) });
+});
 
 export default r;

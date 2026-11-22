@@ -291,7 +291,7 @@ function showKeyDownload(view, fileText, r) {
   mount(view, narrow(html`${steps('citizen')}
   <div class="card pad-lg stack" style="padding:28px">
     <div class="row"><span class="dept-icon" style="background:var(--ok-soft);color:var(--ok)">${icon('check')}</span><div><h2 style="margin:0">Passport ${r.passportNo} issued</h2>
-      ${r.granted ? html`<div class="muted">${num(r.granted)} ${n.currency.plural} have been minted to your wallet.</div>` : ''}</div></div>
+      ${r.granted ? html`<div class="muted">${num(r.granted)} ${n.currency.plural} worth <b>${num(r.grantValue)} ${n.currency.symbol}</b> have been minted to your wallet.</div>` : ''}</div></div>
     <h3 style="margin:8px 0 0">Download your .access key now</h3>
     <p class="muted" style="margin:0">This is the only time it can be downloaded. It contains your private key, encrypted (AES-256-GCM) with your password.</p>
     <div class="keyfile">${fileText}</div>

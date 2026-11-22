@@ -16,7 +16,11 @@ export const NATION = {
   code: process.env.NATION_CODE || 'VRD',          // ISO-style 3-letter code used in passports / MRZ
   motto: process.env.NATION_MOTTO || 'Veritas in Unitate',
   founded: '2026-11-21',
-  currency: { name: 'Sigil', plural: 'Sigils', symbol: 'SGL' },
+  currency: {
+    name: 'Sigil', plural: 'Sigils', symbol: 'SGL',
+    // Face value of one Sigil of each rarity, in SGL. Fixed by the Sigil Currency Act.
+    values: { common: 1, uncommon: 2, rare: 5, epic: 25, legendary: 100 },
+  },
   citizenshipGrant: 1000,
 };
 

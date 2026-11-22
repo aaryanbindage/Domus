@@ -33,9 +33,10 @@ export async function registry(view, _p, query) {
   view.querySelector('[data-search]').onsubmit = (e) => { e.preventDefault(); go(`/records/registry${qs({ q: e.target.q.value.trim() })}`); };
 }
 
-const TX_LABEL = { mint: 'Mint', transfer: 'Transfer', escrow: 'Escrow lock', escrow_release: 'Escrow release', escrow_refund: 'Escrow refund' };
+const TX_LABEL = { mint: 'Mint', transfer: 'Transfer', escrow: 'Escrow lock', escrow_release: 'Escrow release', escrow_refund: 'Escrow refund', exchange_in: 'Mint exchange', exchange_out: 'Mint change' };
 export const txBadge = (t) => html`<span class="badge ${t === 'mint' ? 'gold' : t === 'transfer' ? 'blue' : t === 'escrow' ? 'warn' : 'ok'}">${TX_LABEL[t] || t}</span>`;
 
+const party = (name) => (!name || name === 'Treasury' ? html`<span class="muted">Treasury</span>` : html`<a href="#/citizen/${name}">@${name}</a>`);
 export async function ledger(view, _p, query) {
   const page = Number(query.get('page') || 1);
   const d = await api.get(`/api/gov/records/ledger${qs({ page })}`);
@@ -45,7 +46,7 @@ export async function ledger(view, _p, query) {
   <div data-result></div>
   <div class="card table-wrap"><table class="table"><thead><tr><th>#</th><th>Type</th><th>From → To</th><th class="right">Amount</th><th>Memo</th><th>Hash</th><th>When</th></tr></thead><tbody>
     ${d.items.map((t) => html`<tr><td><a href="#/records/ledger/${t.id}">${t.id}</a></td><td>${txBadge(t.type)}${t.signed ? html` <span title="Signed by sender's .access key">${icon('key')}</span>` : ''}</td>
-      <td class="small nowrap">${t.from ? html`<a href="#/citizen/${t.from}">@${t.from}</a>` : html`<span class="muted">Treasury</span>`} → ${t.to ? html`<a href="#/citizen/${t.to}">@${t.to}</a>` : '—'}</td>
+      <td class="small nowrap">${party(t.from)} → ${party(t.to)}</td>
       <td class="right">${num(t.amount)}</td><td class="small muted">${t.memo}</td><td class="hash">${t.hash.slice(0, 12)}…</td><td class="small nowrap">${ago(t.ts)}</td></tr>`)}</tbody></table></div>
   ${pager(d.page, d.pages, (p) => `#/records/ledger?page=${p}`)}`);
   view.querySelector('[data-verify]').onclick = async (e) => {
@@ -65,7 +66,7 @@ export async function ledgerEntry(view, { id }) {
   mount(view, html`${crumbs(html`<a href="#/records/ledger">Ledger</a>`, `Entry #${t.id}`)}
   <h1>Ledger entry #${t.id}</h1>
   <div class="split"><div class="stack">
-    <div class="card pad">${describe([['Type', txBadge(t.type)], ['Time', fmtDateTime(t.ts)], ['From', t.from ? userLink(t.from) : 'Treasury (mint)'], ['To', userLink(t.to)], ['Amount', html`<b>${num(t.amount)}</b> ${nation().currency.symbol}`], ['Memo', t.memo || '—'], ['Reference', t.ref || '—']])}</div>
+    <div class="card pad">${describe([['Type', txBadge(t.type)], ['Time', fmtDateTime(t.ts)], ['From', t.from ? userLink(t.from) : 'Treasury'], ['To', t.to ? userLink(t.to) : 'Treasury reserve'], ['Value', html`<b>${num(t.amount)}</b> ${nation().currency.symbol}`], ['Memo', t.memo || '—'], ['Reference', t.ref || '—']])}</div>
     <div class="card pad stack tight"><h4 style="margin:0">Cryptographic proof</h4>${describe([
       ['Entry hash', html`<span class="hash break">${t.hash}</span>`], ['Previous hash', html`<span class="hash break">${t.prev_hash}</span>`],
       ['Treasury signature', html`<span class="hash break">${t.server_sig}</span>`],
@@ -94,22 +95,22 @@ export async function gazette(view, _p, query) {
 export async function treasury(view) {
   const t = await api.get('/api/gov/records/treasury');
   const order = ['legendary', 'epic', 'rare', 'uncommon', 'common'];
-  const total = t.total || 1;
+  const total = t.tokens || 1;
   const maxDay = Math.max(1, ...t.daily.map((d) => d.volume));
   mount(view, html`${crumbs('Treasury')}
-  <div class="page-head"><span class="eyebrow">Treasury &amp; Mint</span><h1>The ${t.currency.name} (${t.currency.symbol})</h1><p>Every ${t.currency.name} is a numbered collectible. ${num(t.grant)} are minted per new citizen; no other issuance is permitted.</p></div>
-  <div class="grid g4">${[[t.total, 'Total supply'], [t.escrow, 'Held in escrow'], [t.transactions24h, 'Transactions (24h)'], [t.volume24h, 'Volume (24h)']].map(([v, l]) => html`<div class="card stat"><b>${num(v)}</b><span>${l}</span></div>`)}</div>
+  <div class="page-head"><span class="eyebrow">Treasury &amp; Mint</span><h1>The ${t.currency.name} (${t.currency.symbol})</h1><p>Every ${t.currency.name} is a numbered collectible with a face value set by its rarity. ${num(t.grant)} Sigils are minted per new citizen; the Mint also issues common change when a Sigil is broken.</p></div>
+  <div class="grid g4">${[[t.circulating, `${t.currency.symbol} in circulation`], [t.tokens, 'Sigils in existence'], [t.reserveValue, `${t.currency.symbol} in Treasury reserve`], [t.escrow, `${t.currency.symbol} held in escrow`], [t.transactions24h, 'Transactions (24h)'], [t.volume24h, `Volume (24h, ${t.currency.symbol})`], [Math.round((t.circulating / Math.max(1, t.tokens)) * 100) / 100, `Average ${t.currency.symbol} per Sigil`], [t.entries, 'Ledger entries']].map(([v, l]) => html`<div class="card stat"><b>${num(v)}</b><span>${l}</span></div>`)}</div>
   <div class="grid g2" style="margin-top:18px">
     <div class="card pad stack"><h3 style="margin:0">Rarity distribution</h3>
       <div class="bar" style="height:14px">${order.slice().reverse().map((r) => html`<i style="width:${((t.byRarity[r] || 0) / total) * 100}%;background:var(--r-${r})"></i>`)}</div>
-      <table class="table"><tbody>${order.map((r) => html`<tr><td class="row tight" style="flex-wrap:nowrap"><span style="width:28px;display:inline-block">${sigilArt(order.indexOf(r) + 1, r)}</span>${rarityLabel(r)}</td><td class="right">${num(t.byRarity[r] || 0)}</td><td class="right muted">${(((t.byRarity[r] || 0) / total) * 100).toFixed(2)}%</td></tr>`)}</tbody></table></div>
+      <table class="table"><thead><tr><th>Rarity</th><th class="right">Face value</th><th class="right">Minted</th><th class="right">Share</th></tr></thead><tbody>${order.map((r) => html`<tr><td><div class="row tight" style="flex-wrap:nowrap"><span style="width:28px;display:inline-block">${sigilArt(order.indexOf(r) + 1, r)}</span>${rarityLabel(r)}</div></td><td class="right money">${t.values[r]}</td><td class="right">${num(t.byRarity[r] || 0)}</td><td class="right muted">${(((t.byRarity[r] || 0) / total) * 100).toFixed(2)}%</td></tr>`)}</tbody></table></div>
     <div class="card pad stack"><h3 style="margin:0">Transfer volume, last 30 days</h3>
       ${t.daily.length ? html`<div style="display:flex;align-items:flex-end;gap:3px;height:160px" role="img" aria-label="Daily transfer volume">${t.daily.map((d) => html`<div title="${fmtDate(d.day)}: ${num(d.volume)} ${t.currency.symbol} in ${d.count} tx" style="flex:1;background:var(--accent);border-radius:3px 3px 0 0;height:${Math.max(3, (d.volume / maxDay) * 100)}%"></div>`)}</div>` : empty('No transfers yet.', 'ledger')}
-      <h4 style="margin:8px 0 0">Largest holders</h4>
+      <h4 style="margin:8px 0 0">Largest holders (by value)</h4>
       <div class="list small">${t.top.map((h, i) => html`<div class="row between" style="padding:6px 0"><span>${i + 1}. <a href="#/citizen/${h.username}">${h.display_name}</a></span><span class="money">${num(h.c)}</span></div>`)}</div></div>
   </div>
   <div class="card" style="margin-top:18px"><div class="card-head"><h3>Legendary register</h3><span class="small muted">${t.legendary.length} shown</span></div>
-    ${t.legendary.length ? html`<div class="pad tokens">${t.legendary.map((s) => html`<div class="token">${sigilArt(s.serial, 'legendary')}<b>#${s.serial}</b><div class="muted"><a href="#/citizen/${s.username}">@${s.username}</a></div></div>`)}</div>` : empty('No legendary Sigils minted yet.', 'star')}</div>`);
+    ${t.legendary.length ? html`<div class="pad tokens">${t.legendary.map((s) => html`<div class="token">${sigilArt(s.serial, 'legendary')}<b>#${s.serial}</b><div class="muted">${s.username === 'Treasury' ? 'Treasury reserve' : html`<a href="#/citizen/${s.username}">@${s.username}</a>`}</div></div>`)}</div>` : empty('No legendary Sigils minted yet.', 'star')}</div>`);
 }
 
 export async function requests(view, _p, query) {

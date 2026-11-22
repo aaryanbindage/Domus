@@ -1,4 +1,4 @@
-import { html, mount, icon, num, ago, fmtDateTime, pager, empty, toast, go, sigilArt, rarityLabel, qs, money } from '../ui.js';
+import { html, mount, icon, num, ago, fmtDateTime, pager, empty, toast, go, sigilArt, rarityLabel, qs, money, confirmBox, raw } from '../ui.js';
 import { api } from '../api.js';
 import { user, nation, isCitizen, refreshMe } from '../store.js';
 import { accessOp, describe } from '../secure.js';
@@ -14,45 +14,53 @@ export async function wallet(view, _p, query) {
   const [w, tokens, hist] = await Promise.all([api.get('/api/wallet'), api.get(`/api/wallet/tokens${qs({ rarity, page })}`), api.get(`/api/wallet/history?page=${hpage}`)]);
   const c = nation().currency;
   const me = user();
-  const total = w.available + w.inEscrow;
+  const vals = Object.fromEntries(w.rarities.map((r) => [r.id, r.value]));
+  const totalTokens = Object.values(w.byRarity).reduce((a, b) => a + b, 0);
   mount(view, html`<nav class="crumbs"><a href="#/">Home</a><span>Wallet</span></nav>
   <div class="page-head row between"><div><span class="eyebrow">Treasury &amp; Mint</span><h1>My wallet</h1></div>
     <div class="row"><a class="btn primary" href="#/wallet/send">${icon('send')} Send ${c.plural}</a><a class="btn" href="#/records/ledger">${icon('ledger')} Public ledger</a></div></div>
   <div class="grid g4">
-    <div class="card stat" style="grid-column:span 2;background:linear-gradient(135deg,var(--navy),#1d4e89);color:#fff;border:0"><span style="color:#c9d6ea">Available balance</span><b style="font-size:2.4rem">${num(w.available)} <span style="font-size:1rem;color:var(--gold)">${c.symbol}</span></b><span style="color:#c9d6ea">${num(w.inEscrow)} held in marketplace escrow</span></div>
-    ${['legendary', 'epic'].map((r) => html`<div class="card stat"><div class="row between"><b class="rarity-${r}">${num(w.byRarity[r] || 0)}</b><span style="width:40px">${sigilArt(r === 'legendary' ? 7 : 3, r)}</span></div><span style="text-transform:capitalize">${r} Sigils</span></div>`)}
+    <div class="card stat" style="grid-column:span 2;background:linear-gradient(135deg,var(--navy),#1d4e89);color:#fff;border:0"><span style="color:#c9d6ea">Available balance</span><b style="font-size:2.4rem">${num(w.available)} <span style="font-size:1rem;color:var(--gold)">${c.symbol}</span></b><span style="color:#c9d6ea">${num(totalTokens)} Sigils held · ${num(w.inEscrow)} ${c.symbol} in marketplace escrow</span></div>
+    ${['legendary', 'epic'].map((r) => html`<div class="card stat"><div class="row between"><b class="rarity-${r}">${num(w.byRarity[r] || 0)}</b><span style="width:40px">${sigilArt(r === 'legendary' ? 7 : 3, r)}</span></div><span><span style="text-transform:capitalize">${r}</span> Sigils · ${vals[r]} ${c.symbol} each</span></div>`)}
   </div>
-  <div class="card pad" style="margin-top:18px"><div class="bar" style="height:12px">${ORDER.slice().reverse().map((r) => html`<i style="width:${((w.byRarity[r] || 0) / (total || 1)) * 100}%;background:var(--r-${r})"></i>`)}</div>
-    <div class="row small" style="margin-top:8px">${ORDER.map((r) => html`<span>${rarityLabel(r)} ${num(w.byRarity[r] || 0)}</span>`)}</div></div>
+  <div class="card table-wrap" style="margin-top:18px"><table class="table"><thead><tr><th>Rarity</th><th class="right">Face value</th><th class="right">Odds at minting</th><th class="right">You hold</th><th class="right">Worth</th></tr></thead><tbody>
+    ${w.rarities.map((r) => html`<tr><td><div class="row tight" style="flex-wrap:nowrap"><span style="width:26px;display:inline-block">${sigilArt(ORDER.indexOf(r.id) + 2, r.id)}</span>${rarityLabel(r.id)}</div></td><td class="right money">${r.value}</td><td class="right muted">${r.odds >= 1 ? 'the rest' : `1 in ${Math.round(1 / r.odds)}`}</td><td class="right">${num(w.byRarity[r.id] || 0)}</td><td class="right money">${num((w.byRarity[r.id] || 0) * r.value)}</td></tr>`)}
+  </tbody></table></div>
 
   <div class="split" style="margin-top:18px">
-    <div class="card"><div class="card-head"><h3>My collection</h3><span class="small muted">${num(tokens.total)} shown</span></div>
+    <div class="card"><div class="card-head"><h3>My collection</h3><span class="small muted">${num(tokens.total)} Sigils · click one to break it into change at the Mint</span></div>
       <div class="pad"><div class="chips" style="margin-bottom:14px"><a class="chip ${!rarity ? 'active' : ''}" href="#/wallet">All</a>${ORDER.map((r) => html`<a class="chip ${r === rarity ? 'active' : ''}" href="#/wallet?rarity=${r}">${r}</a>`)}</div>
-      ${tokens.items.length ? html`<div class="tokens">${tokens.items.map((t) => html`<div class="token" title="Sigil #${t.serial} — minted ${fmtDateTime(t.minted_at)}">${t.locked_order ? html`<span class="lock" title="In escrow">${icon('lock')}</span>` : ''}${sigilArt(t.serial, t.rarity)}<b>#${t.serial}</b><div>${rarityLabel(t.rarity)}</div></div>`)}</div>` : empty('No Sigils of this rarity.', 'coin')}
+      ${tokens.items.length ? html`<div class="tokens">${tokens.items.map((t) => { const breakable = t.rarity !== 'common' && !t.locked_order; return html`<div class="token ${breakable ? 'selectable' : ''}" ${breakable ? raw(`data-break="${t.serial}"`) : ''} data-rarity="${t.rarity}" title="Sigil #${t.serial} — minted ${fmtDateTime(t.minted_at)}">${t.locked_order ? html`<span class="lock" title="In escrow">${icon('lock')}</span>` : ''}${sigilArt(t.serial, t.rarity)}<b>#${t.serial}</b><div>${rarityLabel(t.rarity)}</div><div class="money tiny">${vals[t.rarity]}</div></div>`; })}</div>` : empty('No Sigils of this rarity.', 'coin')}
       ${pager(tokens.page, tokens.pages, (p) => `#/wallet${qs({ rarity, page: p })}`)}</div></div>
     <div class="card"><div class="card-head"><h3>History</h3></div>
       ${hist.items.length ? html`<div class="list">${hist.items.map((t) => {
         const incoming = t.to_id === me.id && t.type !== 'escrow';
         const other = incoming ? t.from_user : t.to_user;
-        return html`<a class="list-item" href="#/records/ledger/${t.id}"><div class="grow">${txBadge(t.type)} <span class="small">${t.type === 'mint' ? 'Treasury' : other ? `@${other}` : ''}</span><div class="tiny muted">${t.memo} · ${ago(t.ts)}</div></div>
+        return html`<a class="list-item" href="#/records/ledger/${t.id}"><div class="grow">${txBadge(t.type)} <span class="small">${t.type === 'mint' || (!other && t.type.startsWith('exchange')) ? 'Treasury' : other ? `@${other}` : ''}</span><div class="tiny muted">${t.memo} · ${ago(t.ts)}</div></div>
           <b class="mono nowrap" style="color:${incoming ? 'var(--ok)' : 'var(--text)'}">${incoming ? '+' : '−'}${num(t.amount)}</b></a>`;
       })}</div>` : empty('No transactions yet.', 'ledger')}
       ${pager(hist.page, hist.pages, (p) => `#/wallet${qs({ rarity, page, h: p })}`)}</div>
   </div>`);
+  view.querySelectorAll('[data-break]').forEach((el) => el.onclick = async () => {
+    const v = vals[el.dataset.rarity];
+    if (!(await confirmBox(`Break Sigil #${el.dataset.break} at the Mint?`, `This ${el.dataset.rarity} Sigil (${v} ${c.symbol}) goes into the Treasury reserve and you receive ${v} ${c.symbol} of smaller Sigils as change. Your balance stays the same, but you give up this collectible.`, { okLabel: 'Break into change' }))) return;
+    try { const r = await api.post('/api/wallet/break', { serial: Number(el.dataset.break) }); toast(`Received ${r.change} Sigils worth ${r.value} ${c.symbol}`, 'ok'); wallet(view, _p, query); } catch (e) { toast(e.message, 'bad'); }
+  });
 }
 
 export async function send(view, _p, query) {
   if (!isCitizen()) return go('/apply');
   const w = await api.get('/api/wallet');
   const c = nation().currency;
-  let picked = new Set();
+  let picked = new Map();
   mount(view, html`<nav class="crumbs"><a href="#/">Home</a><span><a href="#/wallet">Wallet</a></span><span>Send</span></nav>
   <div style="max-width:760px;margin:0 auto" class="stack"><div><h1>Send ${c.plural}</h1><p class="muted">Transfers are signed with your .access key and recorded on the public ledger. Available: ${money(w.available)}</p></div>
   <form class="card pad form" data-form>
     <div class="grid g2"><label class="field"><span>Recipient account name</span><input class="input" name="to" required value="${query.get('to') || ''}" placeholder="username" autocomplete="off"><small data-who></small></label>
-      <label class="field"><span>Amount (${c.symbol})</span><input class="input" name="amount" type="number" min="1" max="${w.available}" required value="${query.get('amount') || ''}"></label></div>
+      <label class="field"><span>Amount (${c.symbol} value)</span><input class="input" name="amount" type="number" min="1" max="${w.available}" required value="${query.get('amount') || ''}"></label></div>
     <label class="field"><span>Memo (public)</span><input class="input" name="memo" maxlength="140" placeholder="What is it for?"></label>
-    <label class="check"><input type="checkbox" name="protectRare" checked> Protect my rare, epic and legendary Sigils (spend commons first)</label>
+    <label class="check"><input type="checkbox" name="protectRare" checked> Protect my rare, epic and legendary Sigils (pay with commons and uncommons)</label>
+    <p class="tiny muted" style="margin:0">Your wallet pays the exact amount using your lowest-value Sigils first. If it can’t make exact change, it breaks one Sigil into change at the Mint automatically.</p>
     <details><summary class="small" style="cursor:pointer">Or choose exactly which Sigils to send…</summary><div data-picker class="pad" style="padding-inline:0"></div></details>
     <button class="btn primary lg" type="submit">${icon('key')} Review &amp; sign transfer</button></form></div>`);
   const form = view.querySelector('[data-form]');
@@ -72,12 +80,13 @@ export async function send(view, _p, query) {
     e.target.dataset.loaded = 1;
     const box = view.querySelector('[data-picker]');
     const t = await api.get('/api/wallet/tokens?page=1');
-    mount(box, html`<p class="small muted">Click Sigils to select them (first 60 shown, rarest first). The amount updates to match.</p><div class="tokens">${t.items.filter((x) => !x.locked_order).map((x) => html`<div class="token selectable" data-serial="${x.serial}">${sigilArt(x.serial, x.rarity)}#${x.serial}<div>${rarityLabel(x.rarity)}</div></div>`)}</div>`);
+    const vals = Object.fromEntries(w.rarities.map((r) => [r.id, r.value]));
+    mount(box, html`<p class="small muted">Click Sigils to select them (first 60 shown, rarest first). The amount updates to their total value.</p><div class="tokens">${t.items.filter((x) => !x.locked_order).map((x) => html`<div class="token selectable" data-serial="${x.serial}" data-value="${vals[x.rarity]}">${sigilArt(x.serial, x.rarity)}#${x.serial}<div>${rarityLabel(x.rarity)}</div><div class="money tiny">${vals[x.rarity]}</div></div>`)}</div>`);
     box.querySelectorAll('[data-serial]').forEach((el) => el.onclick = () => {
       const s = Number(el.dataset.serial);
-      picked.has(s) ? picked.delete(s) : picked.add(s);
+      picked.has(s) ? picked.delete(s) : picked.set(s, Number(el.dataset.value));
       el.classList.toggle('selected', picked.has(s));
-      if (picked.size) { form.amount.value = picked.size; form.protectRare.checked = false; }
+      if (picked.size) { form.amount.value = [...picked.values()].reduce((a, b) => a + b, 0); form.protectRare.checked = false; }
     });
   });
   form.onsubmit = async (e) => {
@@ -85,8 +94,9 @@ export async function send(view, _p, query) {
     const amount = Number(form.amount.value);
     const params = { to: form.to.value.trim(), amount, memo: form.memo.value.trim(), protectRare: form.protectRare.checked };
     if (picked.size) {
-      if (picked.size !== amount) return toast(`You selected ${picked.size} Sigils but the amount is ${amount}`, 'bad');
-      params.serials = [...picked].sort((a, b) => a - b);
+      const total = [...picked.values()].reduce((a, b) => a + b, 0);
+      if (total !== amount) return toast(`Your selected Sigils are worth ${total} ${c.symbol} but the amount is ${amount}`, 'bad');
+      params.serials = [...picked.keys()].sort((a, b) => a - b);
     }
     const r = await accessOp({
       op: 'wallet.send', params, title: `Send ${num(amount)} ${c.symbol} to @${params.to}`,

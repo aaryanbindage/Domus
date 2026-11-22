@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'node:path';
 import { ROOT, PORT, DEV, NATION, PUBLIC_URL } from './config.js';
 import './db.js';
-import { seed } from './seed.js';
+import { seed, syncLaws } from './seed.js';
 import { loadSession, csrf } from './auth.js';
 import account, { secure } from './routes/account.js';
 import gov from './routes/gov.js';
@@ -13,6 +13,7 @@ import admin from './routes/admin.js';
 import { SERVER_PUBLIC_PEM, SERVER_KEY_FINGERPRINT } from './security.js';
 
 seed();
+syncLaws();
 
 const app = express();
 app.set('trust proxy', 'loopback');

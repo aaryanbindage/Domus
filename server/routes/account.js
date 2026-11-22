@@ -193,15 +193,16 @@ r.post('/passport/issue', requireAuth, h(async (req, res) => {
     q.run(`UPDATE users SET public_key = ?, key_id = ?, key_version = key_version + 1, key_reissue = 'none',
       passport_no = ?, passport_version = passport_version + 1, passport_issued_at = ?, status = 'citizen',
       citizen_since = COALESCE(citizen_since, ?) WHERE id = ?`, pk, keyId(pk), passportNo, now(), now(), u.id);
+    let grant = null;
     if (!reissue) {
-      mint(u.id, NATION.citizenshipGrant, 'Citizenship grant');
-      gazette('citizenship', `Citizenship conferred on @${u.username}`, `Passport ${passportNo} issued. ${NATION.citizenshipGrant} ${NATION.currency.plural} minted to the new citizen.`, `user:${u.id}`);
+      grant = mint(u.id, NATION.citizenshipGrant, 'Citizenship grant');
+      gazette('citizenship', `Citizenship conferred on @${u.username}`, `Passport ${passportNo} issued. ${grant.count} ${NATION.currency.plural} worth ${grant.value} ${NATION.currency.symbol} minted to the new citizen.`, `user:${u.id}`);
     } else {
       gazette('passport', `Passport ${passportNo} reissued`, 'Previous passport images and .access key revoked.', `user:${u.id}`);
     }
     // Any earlier passport check on this session refers to the old passport.
     q.run('UPDATE sessions SET passport_until = 0 WHERE user_id = ?', u.id);
-    return { passportNo };
+    return { passportNo, grantValue: grant?.value || 0 };
   });
   audit(u.id, reissue ? 'passport_reissued' : 'passport_issued', result);
   res.json({ ok: true, ...result, keyId: keyId(pk), granted: reissue ? 0 : NATION.citizenshipGrant });

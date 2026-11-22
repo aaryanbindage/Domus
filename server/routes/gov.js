@@ -3,8 +3,9 @@ import { q, tx, now, audit, gazette } from '../db.js';
 import { NATION, SECURITY } from '../config.js';
 import { requireAuth, requireCitizen, requirePassport, requireAccess, requireOfficial, requireAdmin, isOfficial, isAdmin, publicUser } from '../auth.js';
 import { h, str, int, bad, forbidden, notFound, oneOf, page } from '../util.js';
-import { supplyStats, verifyChain, expand, rarityFor } from '../ledger.js';
+import { supplyStats, verifyChain, expand, TREASURY } from '../ledger.js';
 import { readPassportToken } from '../passport.js';
+import { AREAS } from '../laws.js';
 
 const r = Router();
 const userBrief = (id) => {
@@ -37,7 +38,7 @@ r.get('/overview', (req, res) => {
       billsVoting: q.get("SELECT COUNT(*) c FROM bills WHERE status = 'voting'").c,
       listings: q.get("SELECT COUNT(*) c FROM listings WHERE status = 'active'").c,
       forumThreads: q.get('SELECT COUNT(*) c FROM forum_threads WHERE deleted = 0').c,
-      supply: supplyStats().total,
+      supply: supplyStats().circulating,
     },
     news: q.all('SELECT id, title, summary, category, published_at, pinned FROM news ORDER BY pinned DESC, published_at DESC LIMIT 5'),
     bills: q.all("SELECT id, title, summary, status, voting_ends, yes, no, abstain FROM bills WHERE status IN ('voting','gathering') ORDER BY status = 'voting' DESC, created_at DESC LIMIT 4"),
@@ -102,15 +103,27 @@ r.get('/departments/:slug', (req, res) => {
 r.get('/laws', (req, res) => {
   const kind = ['constitution', 'act', 'regulation', 'order'].includes(req.query.kind) ? req.query.kind : null;
   const term = String(req.query.q || '').trim();
+  const area = String(req.query.area || '');
   const conds = []; const args = [];
   if (kind) { conds.push('kind = ?'); args.push(kind); }
-  if (term) { conds.push('(title LIKE ? OR body LIKE ? OR code LIKE ?)'); args.push(`%${term}%`, `%${term}%`, `%${term}%`); }
-  res.json(q.all(`SELECT id, code, title, kind, summary, status, enacted_at, bill_id FROM laws ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''} ORDER BY kind = 'constitution' DESC, enacted_at, id`, ...args));
+  if (area) { conds.push('area = ?'); args.push(area); }
+  if (term) { conds.push('(title LIKE ? OR body LIKE ? OR code LIKE ? OR summary LIKE ?)'); args.push(`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`); }
+  const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+  res.json({
+    items: q.all(`SELECT id, code, title, kind, area, summary, status, enacted_at, bill_id FROM laws ${where}
+      ORDER BY CASE kind WHEN 'constitution' THEN 0 WHEN 'act' THEN 1 WHEN 'regulation' THEN 2 ELSE 3 END, id`, ...args),
+    areas: [...AREAS, 'Citizen Legislation'].map((a) => ({ name: a, count: q.get('SELECT COUNT(*) c FROM laws WHERE area = ?', a).c })).filter((a) => a.count),
+    kinds: Object.fromEntries(q.all('SELECT kind, COUNT(*) c FROM laws GROUP BY kind').map((k) => [k.kind, k.c])),
+    total: q.get('SELECT COUNT(*) c FROM laws').c,
+  });
 });
 r.get('/laws/:id', (req, res) => {
   const l = q.get('SELECT * FROM laws WHERE id = ?', Number(req.params.id));
   if (!l) throw notFound('Law not found');
-  res.json({ ...l, department: q.get('SELECT slug, name FROM departments WHERE id = ?', l.department_id) || null });
+  res.json({
+    ...l, department: q.get('SELECT slug, name FROM departments WHERE id = ?', l.department_id) || null,
+    related: q.all('SELECT id, code, title FROM laws WHERE area = ? AND id != ? ORDER BY id LIMIT 8', l.area, l.id),
+  });
 });
 
 // ---------------------------------------------------------------- bills (citizen legislation)
@@ -222,7 +235,7 @@ r.get('/records/ledger', (req, res) => {
   const where = uid ? 'WHERE from_id = ? OR to_id = ?' : '';
   const args = uid ? [uid, uid] : [];
   const names = new Map();
-  const nm = (id) => { if (id == null) return null; if (!names.has(id)) names.set(id, q.get('SELECT username FROM users WHERE id = ?', id)?.username || `#${id}`); return names.get(id); };
+  const nm = (id) => { if (id == null) return null; if (id === TREASURY) return 'Treasury'; if (!names.has(id)) names.set(id, q.get('SELECT username FROM users WHERE id = ?', id)?.username || `#${id}`); return names.get(id); };
   const items = q.all(`SELECT id, ts, type, from_id, to_id, amount, serials, memo, ref, hash, prev_hash, sender_sig IS NOT NULL signed FROM ledger ${where} ORDER BY id DESC LIMIT ? OFFSET ?`, ...args, limit, offset)
     .map((t) => ({ ...t, from: nm(t.from_id), to: nm(t.to_id), signed: !!t.signed }));
   const total = q.get(`SELECT COUNT(*) c FROM ledger ${where}`, ...args).c;
@@ -233,7 +246,7 @@ r.get('/records/ledger/:id', (req, res) => {
   const t = q.get('SELECT * FROM ledger WHERE id = ?', Number(req.params.id));
   if (!t) throw notFound();
   const serialList = expand(t.serials);
-  res.json({ ...t, serialCount: serialList.length, preview: serialList.slice(0, 24).map((s) => ({ serial: s, rarity: rarityFor(s).id })), from: userBrief(t.from_id), to: userBrief(t.to_id), fromKey: t.from_id ? q.get('SELECT public_key FROM users WHERE id = ?', t.from_id)?.public_key : null });
+  res.json({ ...t, serialCount: serialList.length, preview: serialList.slice(0, 24).map((s) => ({ serial: s, rarity: q.get('SELECT rarity FROM tokens WHERE serial = ?', s)?.rarity || 'common' })), from: userBrief(t.from_id), to: userBrief(t.to_id), fromKey: t.from_id ? q.get('SELECT public_key FROM users WHERE id = ?', t.from_id)?.public_key : null });
 });
 
 r.get('/records/gazette', (req, res) => {
@@ -250,8 +263,10 @@ r.post('/records/gazette', requireOfficial, (req, res) => {
 
 r.get('/records/treasury', (_req, res) => {
   const s = supplyStats();
-  const top = q.all(`SELECT u.username, u.display_name, COUNT(*) c FROM tokens t JOIN users u ON u.id = t.owner_id GROUP BY t.owner_id ORDER BY c DESC LIMIT 10`);
-  const legendary = q.all(`SELECT t.serial, u.username FROM tokens t JOIN users u ON u.id = t.owner_id WHERE t.rarity = 'legendary' ORDER BY t.serial LIMIT 50`);
+  const v = NATION.currency.values;
+  const valueSql = `CASE t.rarity ${Object.entries(v).map(([k, x]) => `WHEN '${k}' THEN ${x}`).join(' ')} END`;
+  const top = q.all(`SELECT u.username, u.display_name, SUM(${valueSql}) c FROM tokens t JOIN users u ON u.id = t.owner_id GROUP BY t.owner_id ORDER BY c DESC LIMIT 10`);
+  const legendary = q.all(`SELECT t.serial, COALESCE(u.username, 'Treasury') username FROM tokens t LEFT JOIN users u ON u.id = t.owner_id WHERE t.rarity = 'legendary' ORDER BY t.serial LIMIT 50`);
   const daily = q.all(`SELECT (ts / 86400000) d, COUNT(*) c, SUM(amount) v FROM ledger WHERE type IN ('transfer','escrow') AND ts > ? GROUP BY d ORDER BY d`, now() - 30 * 864e5)
     .map((r2) => ({ day: r2.d * 864e5, count: r2.c, volume: r2.v }));
   res.json({ ...s, currency: NATION.currency, grant: NATION.citizenshipGrant, top, legendary, daily });

@@ -63,7 +63,8 @@ async function becomeApplicant(c, username, docNumber) {
 async function issuePassport(c) {
   const kp = await generateKeyPair();
   const r = await c.post('/api/account/passport/issue', { password: c.password, publicKey: kp.publicKey });
-  ok(r.status === 200 && r.data.passportNo, `${c.username}: passport ${r.data.passportNo} issued, ${r.data.granted} Sigils granted`);
+  ok(r.status === 200 && r.data.passportNo && r.data.grantValue > r.data.granted, `${c.username}: passport ${r.data.passportNo} issued, ${r.data.granted} Sigils worth ${r.data.grantValue} SGL granted`);
+  c.grantValue = r.data.grantValue;
   c.passportNo = r.data.passportNo;
   c.accessFile = await sealAccessFile({ ...kp, account: c.username, passportNo: r.data.passportNo, nation: 'Test', password: c.password });
   const svg = await fetch(`${BASE}/api/account/passport.svg`, { headers: { cookie: c.cookie } }).then((x) => x.text());
@@ -115,7 +116,7 @@ async function main() {
     r = await alice.post('/api/wallet/send', { params: { to: 'bob', amount: 10 } });
     ok(r.status === 403 && r.data.need === 'access', 'transfer without .access key is refused');
     r = await alice.access('wallet.send', { to: 'bob', amount: 25, memo: 'welcome', protectRare: true }, '/api/wallet/send');
-    ok(r.status === 200 && r.data.balance.available === 975, 'signed transfer of 25 Sigils');
+    ok(r.status === 200 && r.data.balance.available === alice.grantValue - 25, 'signed transfer of exactly 25 SGL in value');
     // Replay: reuse a signed challenge
     const { signingKey } = await unlockAccessFile(alice.accessFile, alice.password, 'alice');
     const params = { to: 'bob', amount: 5, memo: '', protectRare: false };
@@ -151,7 +152,25 @@ async function main() {
     ok((await bob.post(`/api/market/orders/${orderId}/ship`, { note: 'Posted, tracking VR123' })).status === 200, 'seller marks delivered');
     ok((await alice.post(`/api/market/orders/${orderId}/confirm`)).status === 200, 'buyer confirms, escrow released');
     r = await bob.get('/api/wallet');
-    ok(r.data.available === 1000 + 25 + 5 + 40, `bob balance is ${r.data.available}`);
+    ok(r.data.available === bob.grantValue + 25 + 5 + 40, `bob balance is exactly grant + 70 (${r.data.available} SGL)`);
+
+    console.log('Rarity values & Mint exchange');
+    const before = (await alice.get('/api/wallet')).data;
+    const toks = (await alice.get('/api/wallet/tokens?rarity=rare')).data.items;
+    r = await alice.post('/api/wallet/break', { serial: toks[0].serial });
+    ok(r.status === 200 && r.data.value === 5 && r.data.balance.available === before.available, 'breaking a rare (5 SGL) Sigil at the Mint keeps the balance');
+    ok(r.data.balance.tokens > before.tokens, 'change Sigils received');
+    r = await alice.post('/api/wallet/break', { serial: (await alice.get('/api/wallet/tokens?rarity=common')).data.items[0].serial });
+    ok(r.status === 400, 'a common Sigil cannot be broken');
+    // Spend all commons so exact change forces an automatic Mint exchange.
+    const commons = (await alice.get('/api/wallet')).data.byRarity.common;
+    r = await alice.access('wallet.send', { to: 'bob', amount: commons, memo: 'all my commons', protectRare: false }, '/api/wallet/send');
+    ok(r.status === 200 && (await alice.get('/api/wallet')).data.byRarity.common === undefined, `paid ${commons} SGL using every common Sigil`);
+    const bal = (await alice.get('/api/wallet')).data.available;
+    r = await alice.access('wallet.send', { to: 'bob', amount: 1, memo: 'needs change', protectRare: false }, '/api/wallet/send');
+    ok(r.status === 200 && r.data.balance.available === bal - 1, 'paying 1 SGL with no commons breaks a Sigil automatically and pays exactly');
+    r = await bob.get('/api/gov/records/treasury');
+    ok(r.data.reserveValue > 0 && r.data.circulating + r.data.reserveValue === r.data.totalValue, 'Treasury reserve accounted separately from circulation');
     ok((await alice.post(`/api/market/orders/${orderId}/review`, { rating: 5, review: 'Beautiful' })).status === 200, 'buyer leaves a review');
 
     console.log('Legislature');
@@ -166,6 +185,14 @@ async function main() {
     r = await bob.access('bill.vote', { billId, choice: 'no' }, `/api/gov/bills/${billId}/vote`);
     ok(r.status === 400, 'double voting refused');
 
+    console.log('Statute book');
+    r = await bob.get('/api/gov/laws');
+    ok(r.data.total >= 69 && r.data.kinds.act >= 50 && r.data.areas.length >= 12, `${r.data.total} laws across ${r.data.areas.length} areas`);
+    r = await bob.get('/api/gov/laws?area=Criminal%20Law');
+    ok(r.data.items.length >= 4 && r.data.items.every((l) => l.area === 'Criminal Law'), 'laws filter by area');
+    r = await bob.get('/api/gov/laws?q=Mint%20change');
+    ok(r.data.items.some((l) => l.title === 'Mint Exchange Act'), 'full-text law search');
+
     console.log('Forum, records & ledger');
     const cats = (await bob.get('/api/forum/categories')).data;
     r = await bob.post('/api/forum/threads', { categoryId: cats.find((c) => c.slug === 'general').id, title: 'Hello from a new citizen', body: 'Glad to be here!' });
@@ -174,7 +201,7 @@ async function main() {
     r = await bob.get(`/api/gov/verify/${bob.passportNo}?token=${encodeURIComponent(bob.passportSvg.match(/<metadata[^>]*>([^<]+)</)[1])}`);
     ok(r.data.valid && r.data.tokenCheck === 'authentic', 'public passport verification');
     r = await bob.get('/api/gov/records/ledger/verify');
-    ok(r.data.ok && r.data.entries >= 6, `ledger chain verifies (${r.data.entries} entries, all signatures valid)`);
+    ok(r.data.ok && r.data.entries >= 10, `ledger chain verifies (${r.data.entries} entries, all signatures valid)`);
     r = await bob.get('/api/gov/records/registry');
     ok(r.data.total === 2 && !JSON.stringify(r.data).includes('@example.com'), 'registry lists citizens without private data');
 

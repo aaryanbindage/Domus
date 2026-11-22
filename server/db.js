@@ -176,6 +176,10 @@ CREATE TABLE IF NOT EXISTS audit (
 );
 `);
 
+// Migrations for databases created by earlier versions.
+const hasColumn = (table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
+if (!hasColumn('laws', 'area')) db.exec("ALTER TABLE laws ADD COLUMN area TEXT NOT NULL DEFAULT 'Citizen Legislation'");
+
 const cache = new Map();
 function stmt(sql) {
   let s = cache.get(sql);

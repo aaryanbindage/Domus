@@ -88,30 +88,45 @@ export async function department(view, { slug }) {
 }
 
 // ---------------------------------------------------------------- laws
+const KINDS = [['', 'All'], ['constitution', 'Constitution'], ['act', 'Acts'], ['regulation', 'Regulations'], ['order', 'Executive Orders']];
+const KIND_BADGE = { constitution: 'gold', act: 'blue', regulation: '', order: 'warn' };
 export async function laws(view, _p, query) {
   const kind = query.get('kind') || '';
   const term = query.get('q') || '';
-  const list = await api.get(`/api/gov/laws${qs({ kind, q: term })}`);
+  const area = query.get('area') || '';
+  const d = await api.get(`/api/gov/laws${qs({ kind, q: term, area })}`);
+  const link = (o) => `#/laws${qs({ kind, q: term, area, ...o })}`;
   mount(view, html`${crumbs(['Laws'])}
-  <div class="page-head row between"><div><h1>Constitution &amp; laws</h1><p>The statute book of the ${nation().name}, including every Act passed by national vote.</p></div>
+  <div class="page-head row between"><div><h1>The statute book</h1><p>${num(d.total)} instruments in force: the Constitution, ${num(d.kinds.act || 0)} Acts, ${num(d.kinds.regulation || 0)} Regulations and ${num(d.kinds.order || 0)} Executive Orders, including every Act passed by national vote.</p></div>
     <a class="btn primary" href="#/laws/bills">${icon('vote')} Bills &amp; national votes</a></div>
-  <div class="tabs"><a class="${!kind ? 'active' : ''}" href="#/laws">All</a><a class="${kind === 'constitution' ? 'active' : ''}" href="#/laws?kind=constitution">Constitution</a><a class="${kind === 'act' ? 'active' : ''}" href="#/laws?kind=act">Acts</a><a href="#/laws/bills">Bills</a></div>
-  <form class="row" data-search style="margin-bottom:18px"><input class="input grow" name="q" placeholder="Search the law…" value="${term}" style="max-width:420px"><button class="btn">${icon('search')} Search</button></form>
-  ${list.length ? html`<div class="card list">${list.map((l) => html`<a class="list-item" href="#/laws/${l.id}">
-    <span class="dept-icon">${icon(l.kind === 'constitution' ? 'crown' : 'scale')}</span>
-    <div class="grow"><div class="row tight"><span class="badge ${l.kind === 'constitution' ? 'gold' : 'blue'}">${l.code}</span>${statusBadge(l.status)}${l.bill_id ? html`<span class="badge ok">Citizen-made</span>` : ''}</div>
-      <b style="display:block;margin:4px 0 2px">${l.title}</b><div class="small muted">${l.summary}</div></div><span class="small faint nowrap">${fmtDate(l.enacted_at)}</span></a>`)}</div>` : empty('No laws match your search.', 'search')}`);
-  view.querySelector('[data-search]').onsubmit = (e) => { e.preventDefault(); go(`/laws${qs({ kind, q: e.target.q.value.trim() })}`); };
+  <div class="tabs">${KINDS.map(([k, l]) => html`<a class="${k === kind ? 'active' : ''}" href="${link({ kind: k })}">${l}${k && d.kinds[k] ? html` <span class="faint">${d.kinds[k]}</span>` : ''}</a>`)}<a href="#/laws/bills">Bills</a></div>
+  <div class="split left">
+    <aside class="card pad stack tight" style="position:sticky;top:84px">
+      <form data-search><input class="input" name="q" placeholder="Search the law…" value="${term}"></form>
+      <b class="small" style="margin-top:6px">Areas of law</b>
+      <a class="small ${area ? 'muted' : ''}" style="${area ? '' : 'font-weight:700'}" href="${link({ area: '' })}">All areas</a>
+      ${d.areas.map((a) => html`<a class="small row between ${a.name === area ? '' : 'muted'}" style="${a.name === area ? 'font-weight:700' : ''}" href="${link({ area: a.name })}"><span>${a.name}</span><span class="faint">${a.count}</span></a>`)}
+    </aside>
+    <div>
+      ${term || area ? html`<p class="small muted">${num(d.items.length)} result${d.items.length === 1 ? '' : 's'}${area ? ` in ${area}` : ''}${term ? ` for “${term}”` : ''} · <a href="#/laws">clear</a></p>` : ''}
+      ${d.items.length ? html`<div class="card list">${d.items.map((l) => html`<a class="list-item" href="#/laws/${l.id}">
+        <span class="dept-icon">${icon(l.kind === 'constitution' ? 'crown' : l.kind === 'regulation' ? 'file' : l.kind === 'order' ? 'edit' : 'scale')}</span>
+        <div class="grow"><div class="row tight"><span class="badge ${KIND_BADGE[l.kind]}">${l.code}</span>${statusBadge(l.status)}${l.bill_id ? html`<span class="badge ok">Citizen-made</span>` : ''}<span class="tiny faint">${l.area}</span></div>
+          <b style="display:block;margin:4px 0 2px">${l.title}</b><div class="small muted">${l.summary}</div></div></a>`)}</div>` : empty('No laws match your search.', 'search')}
+    </div>
+  </div>`);
+  view.querySelector('[data-search]').onsubmit = (e) => { e.preventDefault(); go(`/laws${qs({ kind, area, q: e.target.q.value.trim() })}`); };
 }
 
 export async function law(view, { id }) {
   const l = await api.get(`/api/gov/laws/${id}`);
-  mount(view, html`${crumbs(['Laws', '#/laws'], [l.code])}
+  mount(view, html`${crumbs(['Laws', '#/laws'], [l.area, `#/laws?area=${encodeURIComponent(l.area)}`], [l.code])}
   <div class="split"><article class="card pad-lg" style="padding:clamp(20px,4vw,44px)">
-    <div class="row tight"><span class="badge ${l.kind === 'constitution' ? 'gold' : 'blue'}">${l.code}</span>${statusBadge(l.status)}</div>
+    <div class="row tight"><span class="badge ${KIND_BADGE[l.kind]}">${l.code}</span>${statusBadge(l.status)}</div>
     <h1 style="margin-top:12px">${l.title}</h1><p class="muted">${l.summary}</p><hr>
     <div class="prose">${md(l.body)}</div></article>
-  <aside class="stack"><div class="card pad">${describe([['Type', l.kind], ['In force since', fmtDate(l.enacted_at)], ['Administered by', l.department ? html`<a href="#/government/${l.department.slug}">${l.department.name}</a>` : '—'], ['Origin', l.bill_id ? html`<a href="#/laws/bills/${l.bill_id}">Bill #${l.bill_id} (national vote)</a>` : 'Founding law']])}</div>
+  <aside class="stack"><div class="card pad">${describe([['Type', { constitution: 'Constitution', act: 'Act', regulation: 'Regulation', order: 'Executive Order' }[l.kind]], ['Area of law', html`<a href="#/laws?area=${encodeURIComponent(l.area)}">${l.area}</a>`], ['In force since', fmtDate(l.enacted_at)], ['Administered by', l.department ? html`<a href="#/government/${l.department.slug}">${l.department.name}</a>` : '—'], ['Origin', l.bill_id ? html`<a href="#/laws/bills/${l.bill_id}">Bill #${l.bill_id} (national vote)</a>` : 'Founding law']])}</div>
+    ${l.related.length ? html`<div class="card"><div class="card-head"><h3>Also in ${l.area}</h3></div><div class="list">${l.related.map((x) => html`<a class="list-item" href="#/laws/${x.id}"><span class="badge">${x.code}</span><span class="small grow">${x.title}</span></a>`)}</div></div>` : ''}
     <div class="card pad small muted">Want to change this law? <a href="#/laws/bills/new">Propose a bill</a> — any citizen can.</div></aside></div>`);
 }
 

@@ -52,6 +52,8 @@ npm start                 # http://localhost:3000
 
 `npm test` runs a 61-check end-to-end test of the whole lifecycle against a throwaway database. It covers duplicate-document refusal, forged and foreign passports, parameter tampering, replayed challenges, wrong passwords, escrow, voting, ledger verification, and the on-chain rules (citizen-only transfers, signatures the Treasury cannot forge, rarity parity, chain-vs-ledger audit).
 
+**Putting it online for free:** see [DEPLOY.md](DEPLOY.md) (Oracle Cloud Always Free, one command).
+
 ## Configuration
 
 | Env var | Default |
@@ -62,6 +64,8 @@ npm start                 # http://localhost:3000
 | `NATION_NAME`, `NATION_SHORT`, `NATION_DEMONYM`, `NATION_CODE`, `NATION_MOTTO` | Domus, Domusian, DMS… |
 | `BILL_SIGNATURES`, `BILL_VOTING_DAYS` | `3`, `7` |
 | `NODE_ENV=production` | hides dev email codes |
+| `HOST` | all interfaces (set `127.0.0.1` behind a reverse proxy) |
+| `SMTP_URL`, `MAIL_FROM` | unset: email codes are only logged |
 
 `data/server-keys.json` holds the rotating-key master secret, the document-HMAC pepper and the Ed25519 passport and ledger signing key. Back it up and keep it secret.
 

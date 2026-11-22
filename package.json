@@ -21,6 +21,7 @@
     "express": "^4.22.3",
     "ganache": "^7.9.2",
     "multer": "^2.5.0",
+    "nodemailer": "^7.0.13",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {

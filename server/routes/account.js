@@ -10,6 +10,7 @@ import { createSession, destroySession, requireAuth, requireCitizen, requirePass
 import { h, str, bad, forbidden, rateLimit, memoryUpload, saveImage, oneOf } from '../util.js';
 import { grantCitizenship, registerWallet, balance } from '../ledger.js';
 import { verifyLink } from '../chain.js';
+import { sendMail } from '../mail.js';
 import { newPassportNumber, passportSvg, extractToken, readPassportToken } from '../passport.js';
 
 const r = Router();
@@ -22,11 +23,13 @@ function checkPasswordStrength(pw) {
   if (!/[a-zA-Z]/.test(pw) || !/[^a-zA-Z]/.test(pw)) throw bad('Password must mix letters with numbers or symbols');
 }
 
-function sendEmailCode(user) {
+async function sendEmailCode(user) {
   const code = String(crypto.randomInt(0, 1e6)).padStart(6, '0');
   q.run('INSERT OR REPLACE INTO email_codes (user_id, code_hash, expires_at, attempts) VALUES (?,?,?,0)', user.id, sha256(code), now() + 15 * 60e3);
-  // Plug a real mail transport in here for production (SMTP, SES, Postmark …).
-  console.log(`[mail] to=${user.email} subject="Your ${NATION.short} verification code" code=${code}`);
+  await sendMail(user.email, `Your ${NATION.short} verification code`,
+    `Your ${NATION.short} verification code is ${code}
+
+It expires in 15 minutes. If you did not apply for ${NATION.demonym} citizenship, ignore this email.`);
   return code;
 }
 
@@ -58,7 +61,7 @@ r.post('/register', h(async (req, res) => {
   const pw = await hashPassword(req.body.password);
   const info = q.run('INSERT INTO users (username, email, pw_hash, display_name, created_at) VALUES (?,?,?,?,?)', username, email, pw, displayName, now());
   const user = q.get('SELECT * FROM users WHERE id = ?', info.lastInsertRowid);
-  const code = sendEmailCode(user);
+  const code = await sendEmailCode(user);
   createSession(req, res, user.id);
   audit(user.id, 'register', { ip: req.ip });
   res.json({ ok: true, devCode: DEV ? code : undefined });
@@ -80,7 +83,7 @@ r.post('/verify-email', requireAuth, h(async (req, res) => {
 r.post('/resend-code', requireAuth, h(async (req, res) => {
   if (req.user.email_verified) throw bad('Email already verified');
   rateLimit(`resend:${req.user.id}`, 3, 15 * 60e3);
-  const code = sendEmailCode(req.user);
+  const code = await sendEmailCode(req.user);
   res.json({ ok: true, devCode: DEV ? code : undefined });
 }));
 

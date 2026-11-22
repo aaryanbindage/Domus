@@ -237,6 +237,12 @@ r.post('/key/report-lost', requireCitizen, h(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Lets a citizen confirm their .access file works without doing anything consequential.
+r.post('/key/test', requireAccess('account.keytest', (req) => req.body.params), (req, res) => {
+  audit(req.user.id, 'key_test', null);
+  res.json({ ok: true, keyId: req.user.key_id });
+});
+
 // ---------------------------------------------------------------- profile + password
 r.patch('/profile', requirePassport, h(async (req, res) => {
   const displayName = str(req.body.displayName, 'Display name', { min: 2, max: 40 });
@@ -256,7 +262,7 @@ r.post('/password', requireAccess('account.password', () => ({})), h(async (req,
 
 // ---------------------------------------------------------------- secure-operation challenges
 export const secure = Router();
-const OPS = ['wallet.send', 'market.buy', 'bill.vote', 'account.password', 'admin.role', 'admin.status', 'citizenship.decide'];
+const OPS = ['account.keytest', 'wallet.send', 'market.buy', 'bill.vote', 'account.password', 'admin.role', 'admin.status', 'citizenship.decide'];
 secure.get('/epoch', (_req, res) => res.json(epochInfo()));
 secure.post('/challenge', requireCitizen, (req, res) => {
   const op = oneOf(req.body.op, 'op', OPS);

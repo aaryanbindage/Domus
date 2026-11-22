@@ -47,7 +47,7 @@ function header(market) {
   const n = nation();
   const nav = market ? MARKET_NAV : GOV_NAV;
   return html`
-  <div class="gov-banner"><div class="container">${icon('shield')}<span>An official website of the <strong>${n.name}</strong> · Online since ${new Date(n.founded || Date.now()).getFullYear()}</span>
+  <div class="gov-banner"><div class="container">${icon('shield')}<span>An official website of <strong>${n.name}</strong> · Online since ${new Date(n.founded || Date.now()).getFullYear()}</span>
     <span class="grow"></span><a href="#/security" style="color:inherit">How we keep you secure</a></div></div>
   <header class="header ${market ? 'market-header' : ''}"><div class="container">
     <button class="btn ghost sm menu-btn" data-menu aria-label="Menu">${icon('menu')}</button>

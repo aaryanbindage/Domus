@@ -8,7 +8,7 @@ const C = N.currency;
 const DEPARTMENTS = [
   ['president', 'Office of the Head of State', 'Head of State', 'executive', 'Head of State', 'crown',
     `Lead the ${N.short} government, give assent to Acts passed by the people, and appoint officials.`,
-    `The Office of the Head of State is the chief executive of the ${N.name}. It grants or withholds assent to bills that pass the national vote, appoints and dismisses officials, and represents ${N.short} to other communities online.`,
+    `The Office of the Head of State is the chief executive of ${N.name}. It grants or withholds assent to bills that pass the national vote, appoints and dismisses officials, and represents ${N.short} to other communities online.`,
     [['Laws awaiting assent', '#/laws/bills?status=passed'], ['Official appointments', '#/records/gazette?kind=appointment']]],
   ['assembly', 'National Assembly', 'Assembly', 'legislative', 'Speaker of the Assembly', 'columns',
     'Make law through direct citizen participation.',
@@ -58,7 +58,7 @@ const DEPARTMENTS = [
 
 const NEWS = [
   ['announcement', 'communications', `${N.name} opens its borders to its first citizens`, `Applications for citizenship are now open. Every verified citizen receives a passport, a personal .access key and ${N.citizenshipGrant} ${C.plural}.`,
-    `Today the ${N.name} formally opens for citizenship.\n\nTo join, create an account, verify your email, and submit an identity document together with a live selfie. Once the Department of Citizenship & Identity approves your application, your browser will generate your personal **.access key** and you will be issued a digital passport.\n\nEvery new citizen receives **${N.citizenshipGrant} ${C.plural}**, the national collectible currency, which can be spent in the Marketplace or sent to other citizens.\n\nWelcome to ${N.short}.`, 1],
+    `Today ${N.name} formally opens for citizenship.\n\nTo join, create an account, verify your email, and submit an identity document together with a live selfie. Once the Department of Citizenship & Identity approves your application, your browser will generate your personal **.access key** and you will be issued a digital passport.\n\nEvery new citizen receives **${N.citizenshipGrant} ${C.plural}**, the national collectible currency, which can be spent in the Marketplace or sent to other citizens.\n\nWelcome to ${N.short}.`, 1],
   ['security', 'digital', 'How your .access key protects you', 'The private key in your .access file never leaves your device. Here is how the rotating server key and challenge signing work.',
     `For the most sensitive actions — sending ${C.plural}, buying in the Marketplace, voting, and changing your password — ${N.short} asks you to scan your **.access file**.\n\n- Your browser decrypts the file with your password. The decrypted text becomes your signing key.\n- The server issues a challenge bound to its **rotating key** (it changes every ${SECURITY.epochSeconds / 60} minutes) and to the exact details of what you are doing.\n- Your key signs the challenge; then you confirm with your account name and password.\n\nBecause the challenge includes the exact amount, recipient or vote, nobody can reuse your signature for anything else, and it expires when the server key rotates.\n\n**Keep your .access file somewhere safe and backed up.** The government cannot recover it for you.`, 0],
   ['economy', 'treasury', `The ${C.name}: every coin a collectible`, `Each ${C.name} carries a serial number and a permanent rarity that sets its value — from ${C.values.common} ${C.symbol} for a common to ${C.values.legendary} ${C.symbol} for a legendary.`,
@@ -89,7 +89,7 @@ export function seed() {
     const dept = (slug) => q.get('SELECT id FROM departments WHERE slug = ?', slug).id;
     NEWS.forEach(([category, d, title, summary, body, pinned], i) => q.run('INSERT INTO news (title, summary, body, category, department_id, published_at, pinned) VALUES (?,?,?,?,?,?,?)', title, summary, body, category, dept(d), t - i * 3600e3, pinned));
     FORUM.forEach(([slug, name, description, official], i) => q.run('INSERT INTO forum_categories (slug, name, description, sort, official_only) VALUES (?,?,?,?,?)', slug, name, description, i, official));
-    gazette('founding', `The ${N.name} is founded`, `The Constitution and the founding statute book enter into force.`, null);
+    gazette('founding', `${N.name} is founded`, `The Constitution and the founding statute book enter into force.`, null);
   });
   console.log('[seed] departments, news and forum created');
 }

@@ -22,12 +22,12 @@ const act = (title, area, dept, summary, sections) => ({ code: `Act 2026-${Strin
 const reg = (title, area, dept, summary, sections) => ({ code: `Reg. 2026-${String(++regNo).padStart(2, '0')}`, kind: 'regulation', title, area, dept, summary, body: body(sections) });
 const order = (title, area, dept, summary, sections) => ({ code: `EO 2026-${String(++eoNo).padStart(2, '0')}`, kind: 'order', title, area, dept, summary, body: body(sections) });
 
-const CONSTITUTION = `# Constitution of the ${N.name}
+const CONSTITUTION = `# Constitution of ${N.name}
 
 *We, the citizens of ${N.short}, each a real and single person, establish this Constitution so that a community built online may govern itself with the same seriousness as any nation on Earth.*
 
 ## Article I — The Nation
-1. The ${N.name} is a sovereign online community of its citizens.
+1. ${N.name} is a sovereign online community of its citizens.
 2. Its motto is *${N.motto}*. Its currency is the ${C.name} (${S}).
 3. Sovereignty rests with the citizens, exercised directly through the National Assembly.
 4. This Constitution is the supreme law. Any Act, Regulation or Order inconsistent with it is void to the extent of the inconsistency.
@@ -78,7 +78,7 @@ export function buildLaws() {
   const CUL = 'Culture, Education & Community'; const FOR = 'Foreign Affairs';
 
   return [
-    { code: 'Constitution', kind: 'constitution', title: `Constitution of the ${N.name}`, area: GOV, dept: 'assembly', summary: 'The supreme law: citizenship, rights, the Assembly, the Head of State, the Tribunal and the Treasury.', body: CONSTITUTION },
+    { code: 'Constitution', kind: 'constitution', title: `Constitution of ${N.name}`, area: GOV, dept: 'assembly', summary: 'The supreme law: citizenship, rights, the Assembly, the Head of State, the Tribunal and the Treasury.', body: CONSTITUTION },
 
     // ---------------------------------------------------------------- Citizenship & Identity
     act('Citizenship and Identity Act', CIT, 'citizenship', 'How a person proves who they are, how duplicate accounts are prevented, and how passports and .access keys are issued and revoked.', [

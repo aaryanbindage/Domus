@@ -137,7 +137,7 @@ async function main() {
     console.log('Marketplace');
     await passportCheck(bob);
     const lf = new FormData();
-    Object.entries({ title: 'Hand-drawn map of Veridia', description: 'A lovely ink map, A3 size.', category: 'art', price: '40', quantity: '2', condition: 'new', delivery: 'shipping' }).forEach(([k, v]) => lf.append(k, v));
+    Object.entries({ title: 'Hand-drawn map of Asparagusland', description: 'A lovely ink map, A3 size.', category: 'art', price: '40', quantity: '2', condition: 'new', delivery: 'shipping' }).forEach(([k, v]) => lf.append(k, v));
     lf.append('images', new Blob([PNG]), 'map.png');
     r = await bob.post('/api/market/listings', lf);
     ok(r.status === 200, 'bob lists an item');

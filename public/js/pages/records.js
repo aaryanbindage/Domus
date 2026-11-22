@@ -24,7 +24,7 @@ export async function hub(view) {
 export async function registry(view, _p, query) {
   const page = Number(query.get('page') || 1); const term = query.get('q') || '';
   const d = await api.get(`/api/gov/records/registry${qs({ page, q: term })}`);
-  mount(view, html`${crumbs('Citizen Registry')}<div class="page-head"><h1>Citizen Registry</h1><p>${num(d.total)} citizen${d.total === 1 ? '' : 's'} of the ${nation().name}.</p></div>
+  mount(view, html`${crumbs('Citizen Registry')}<div class="page-head"><h1>Citizen Registry</h1><p>${num(d.total)} citizen${d.total === 1 ? '' : 's'} of ${nation().name}.</p></div>
   <form class="row" data-search style="margin-bottom:16px"><input class="input" name="q" value="${term}" placeholder="Name, account or passport number" style="max-width:380px"><button class="btn">${icon('search')} Search</button></form>
   ${d.items.length ? html`<div class="card table-wrap"><table class="table"><thead><tr><th>Citizen</th><th>Passport</th><th>Key fingerprint</th><th>Citizen since</th></tr></thead><tbody>
     ${d.items.map((c) => html`<tr><td><div class="row tight" style="flex-wrap:nowrap">${avatar(c.displayName)}<div>${userLink(c)}<div class="tiny muted">@${c.username}</div></div></div></td>

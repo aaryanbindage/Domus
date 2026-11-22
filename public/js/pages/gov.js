@@ -12,7 +12,7 @@ export async function newsList(view, _p, query) {
   const category = query.get('category') || '';
   const d = await api.get(`/api/gov/news${qs({ page, category })}`);
   mount(view, html`${crumbs(['News'])}
-  <div class="page-head row between"><div><h1>News &amp; announcements</h1><p>Official communications from the departments of the ${nation().name}.</p></div>
+  <div class="page-head row between"><div><h1>News &amp; announcements</h1><p>Official communications from the departments of ${nation().name}.</p></div>
     ${isOfficial() ? html`<a class="btn primary" href="#/news/new">${icon('plus')} Publish article</a>` : ''}</div>
   <div class="chips" style="margin-bottom:18px"><a class="chip ${!category ? 'active' : ''}" href="#/news">All</a>${d.categories.map((c) => html`<a class="chip ${c === category ? 'active' : ''}" href="#/news?category=${c}">${c}</a>`)}</div>
   ${d.items.length ? html`<div class="grid g3">${d.items.map((a) => html`<a class="card link pad stack tight" href="#/news/${a.id}">

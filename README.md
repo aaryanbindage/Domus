@@ -1,4 +1,4 @@
-# Republic of Veridia — an online nation
+# Asparagusland — an online nation
 
 A complete government platform for a nation that exists online:
 
@@ -58,7 +58,7 @@ npm start                 # http://localhost:3000
 | `PORT` | `3000` |
 | `DATA_DIR` | `./data` (SQLite DB, server keys, uploads) |
 | `PUBLIC_URL` | `http://localhost:PORT` (used in passport QR codes) |
-| `NATION_NAME`, `NATION_SHORT`, `NATION_DEMONYM`, `NATION_CODE`, `NATION_MOTTO` | Republic of Veridia… |
+| `NATION_NAME`, `NATION_SHORT`, `NATION_DEMONYM`, `NATION_CODE`, `NATION_MOTTO` | Asparagusland, Asparaguslander, ASP… |
 | `BILL_SIGNATURES`, `BILL_VOTING_DAYS` | `3`, `7` |
 | `NODE_ENV=production` | hides dev email codes |
 

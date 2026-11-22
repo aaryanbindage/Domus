@@ -10,10 +10,10 @@ export const DEV = process.env.NODE_ENV !== 'production';
 export const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
 
 export const NATION = {
-  name: process.env.NATION_NAME || 'Republic of Veridia',
-  short: process.env.NATION_SHORT || 'Veridia',
-  demonym: process.env.NATION_DEMONYM || 'Veridian',
-  code: process.env.NATION_CODE || 'VRD',          // ISO-style 3-letter code used in passports / MRZ
+  name: process.env.NATION_NAME || 'Asparagusland',
+  short: process.env.NATION_SHORT || 'Asparagusland',
+  demonym: process.env.NATION_DEMONYM || 'Asparaguslander',
+  code: process.env.NATION_CODE || 'ASP',          // ISO-style 3-letter code used in passports / MRZ
   motto: process.env.NATION_MOTTO || 'Veritas in Unitate',
   founded: '2026-11-21',
   currency: {

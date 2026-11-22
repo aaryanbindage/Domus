@@ -14,7 +14,7 @@ export async function home(view) {
   <section class="hero">
     <img class="seal-bg" src="/img/seal.svg" alt="">
     <span class="eyebrow">${n.motto}</span>
-    <h1>Welcome to the ${n.name}</h1>
+    <h1>Welcome to ${n.name}</h1>
     <p>A nation that exists online, governed by its citizens. Every citizen is one verified person, holds a signed digital passport and a personal .access key, and receives ${num(n.citizenshipGrant)} ${n.currency.plural} on joining.</p>
     <div class="row" style="margin-top:22px">
       ${!u ? html`<a class="btn gold lg" href="#/join">${icon('id')} Apply for citizenship</a><a class="btn lg" href="#/security" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.35)">How it works</a>`

@@ -122,6 +122,7 @@ export function buildLaws() {
       ['Issuance', `${N.citizenshipGrant} ${C.plural} are minted to each citizen when their first passport is issued. Because rarities are random, grants differ in value; on average a grant is worth about 1,790 ${S}. The only other issuance is Mint change under the Mint Exchange Act.`],
       ['Payments', `A payment must equal its amount exactly. A wallet spends its lowest-value ${C.plural} first so collectibles are kept; a citizen may instead choose exactly which ${C.plural} to send.`],
       ['Transfers', `A transfer must be signed with the sender's .access key. It is final once recorded on the ledger.`],
+      ['No cash value', `${C.plural} have no value in any real-world currency. The State never buys, sells or redeems them for money, and face values are measured only in ${S}.`],
       ['Amendment of values', 'Face values may be changed only by an Act passed by national vote.'],
     ]),
     act('Mint Exchange Act', TRE, 'treasury', `Lets any citizen break a ${C.name} into smaller change of equal value at the Mint.`, [
@@ -173,6 +174,7 @@ export function buildLaws() {
     ]),
     act('Prohibited Goods Act', COM, 'commerce', 'Lists goods and services that may not be traded.', [
       ['Prohibited', 'Weapons and ammunition; illegal drugs; stolen property; counterfeit goods; personal data of other people; account credentials; .access files; passports or passport images; services to create accounts for others; anything illegal where the buyer or seller lives.'],
+      ['Real money', `${C.plural}, accounts and collectibles may not be sold or bought for real-world money, inside or outside the nation.`],
       ['Age-restricted', 'Goods restricted by age where the buyer lives may be listed only with a clear warning and may not be sold to young citizens.'],
       ['Enforcement', 'Officials may remove prohibited listings. Listing prohibited goods is an offence under the Criminal Code.'],
     ]),

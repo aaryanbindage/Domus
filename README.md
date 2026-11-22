@@ -66,7 +66,7 @@ npm start                 # http://localhost:3000
 
 ## Is the Sigil a real cryptocurrency?
 
-No. It uses real cryptography: ECDSA signatures from each citizen's key, Ed25519 server signatures, and a SHA-256 hash chain. But it runs on **one server you control**, so it is a centralized, tamper-evident ledger, not a blockchain. There is no decentralized consensus, it can't be traded on exchanges, and it has no real-world monetary value. Turning it into a real on-chain token (for example ERC-20/ERC-1155 on an Ethereum L2) is possible, but it brings gas fees, external wallets, and securities and money-transmission law into play.
+No. It uses real cryptography: ECDSA signatures from each citizen's key, Ed25519 server signatures, and a SHA-256 hash chain. But it runs on **one server you control**, so it is a centralized, tamper-evident ledger, not a blockchain. There is no decentralized consensus, it can't be traded on exchanges, and it has no real-world monetary value: by law (Sigil Currency Act and Prohibited Goods Act) Sigils have no cash value and can't be sold for real money. Turning it into a real on-chain token (for example ERC-20/ERC-1155 on an Ethereum L2) is possible, but it brings gas fees, external wallets, and securities and money-transmission law into play.
 
 ## What is and isn't proven
 

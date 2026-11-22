@@ -68,9 +68,9 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 1.5rem 0; }
 .nav a.active { color: var(--accent); background: var(--accent-soft); }
 .nav a.market-link { color: #b4461d; } @media (prefers-color-scheme: dark) { .nav a.market-link { color: #f0895e; } }
 .header-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; }
-.menu-btn { display: none; }
+.btn.menu-btn { display: none; }
 @media (max-width: 1020px) {
-  .menu-btn { display: inline-flex; }
+  .btn.menu-btn { display: inline-flex; }
   .nav { display: none; position: absolute; top: 100%; left: 0; right: 0; background: var(--surface); flex-direction: column; padding: 8px 16px 16px; border-bottom: 1px solid var(--border); box-shadow: var(--shadow-lg); }
   .nav.open { display: flex; }
 }

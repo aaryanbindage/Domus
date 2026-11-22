@@ -4,7 +4,8 @@ import path from 'node:path';
 import { q, tx, now, audit, gazette } from '../db.js';
 import { PRIVATE_DIR } from '../config.js';
 import { requireOfficial, requirePassport, requireAccess, isAdmin } from '../auth.js';
-import { str, bad, forbidden, notFound, oneOf, page } from '../util.js';
+import { h, str, bad, forbidden, notFound, oneOf, page } from '../util.js';
+import { setCitizenActive } from '../ledger.js';
 
 const r = Router();
 r.use(requireOfficial);
@@ -95,19 +96,20 @@ r.post('/users/role', requireAccess('admin.role', (req) => req.body.params), (re
 });
 
 // params: { userId, status }
-r.post('/users/status', requireAccess('admin.status', (req) => req.body.params), (req, res) => {
+r.post('/users/status', requireAccess('admin.status', (req) => req.body.params), h(async (req, res) => {
   if (!isAdmin(req.user)) throw forbidden('Head of State only');
   const { userId, status } = req.access.params;
   oneOf(status, 'Status', ['citizen', 'suspended']);
   const u = q.get('SELECT * FROM users WHERE id = ?', Number(userId));
   if (!u || !['citizen', 'suspended'].includes(u.status)) throw bad('Only citizens can be suspended or reinstated');
   if (u.id === req.user.id) throw bad('You cannot suspend yourself');
+  if (u.chain_address) await setCitizenActive(u.id, status === 'citizen');
   q.run('UPDATE users SET status = ? WHERE id = ?', status, u.id);
   if (status === 'suspended') q.run('DELETE FROM sessions WHERE user_id = ?', u.id);
   gazette('notice', `Citizenship of @${u.username} ${status === 'suspended' ? 'suspended' : 'reinstated'}`, '', `user:${u.id}`);
   audit(req.user.id, `user_${status}`, { user: u.id });
   res.json({ ok: true });
-});
+}));
 
 r.post('/users/:id/allow-reissue', reviewerOnly, requirePassport, (req, res) => {
   const u = q.get("SELECT * FROM users WHERE id = ? AND key_reissue = 'requested'", Number(req.params.id));

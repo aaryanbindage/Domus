@@ -96,7 +96,7 @@ export function requireAccess(op, paramsOf) {
       if (String(auth.username || '').toLowerCase() !== req.user.username.toLowerCase() || !(await verifyPassword(auth.password || '', req.user.pw_hash))) {
         throw forbidden('Account name or password is incorrect.', { need: 'access', op });
       }
-      req.access = { op, params, challenge: auth.challenge, signature: auth.signature };
+      req.access = { op, params, challenge: auth.challenge, signature: auth.signature, chain: auth.chain || null };
       next();
     } catch (e) { next(e); }
   };

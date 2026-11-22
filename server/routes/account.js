@@ -8,7 +8,8 @@ import {
 } from '../security.js';
 import { createSession, destroySession, requireAuth, requireCitizen, requirePassport, requireAccess, publicUser } from '../auth.js';
 import { h, str, bad, forbidden, rateLimit, memoryUpload, saveImage, oneOf } from '../util.js';
-import { mint, balance } from '../ledger.js';
+import { grantCitizenship, registerWallet, balance } from '../ledger.js';
+import { verifyLink } from '../chain.js';
 import { newPassportNumber, passportSvg, extractToken, readPassportToken } from '../passport.js';
 
 const r = Router();
@@ -188,22 +189,27 @@ r.post('/passport/issue', requireAuth, h(async (req, res) => {
   if (!(await verifyPassword(req.body.password || '', u.pw_hash))) throw bad('Password is incorrect — the .access file must be encrypted with your account password');
   const pk = String(req.body.publicKey || '');
   if (!validatePublicKey(pk)) throw bad('Invalid public key');
+  // The Sigil wallet key is derived from the same .access key; the browser proves it holds it.
+  const chainAddress = String(req.body.chainAddress || '');
+  if (!/^0x[0-9a-fA-F]{40}$/.test(chainAddress) || !verifyLink(u.username, keyId(pk), chainAddress, String(req.body.chainProof || ''))) throw bad('Invalid Sigil wallet proof');
+  await registerWallet(u.id, chainAddress);
   const result = tx(() => {
     const passportNo = u.passport_no || newPassportNumber();
-    q.run(`UPDATE users SET public_key = ?, key_id = ?, key_version = key_version + 1, key_reissue = 'none',
+    q.run(`UPDATE users SET public_key = ?, key_id = ?, key_version = key_version + 1, key_reissue = 'none', chain_address = ?,
       passport_no = ?, passport_version = passport_version + 1, passport_issued_at = ?, status = 'citizen',
-      citizen_since = COALESCE(citizen_since, ?) WHERE id = ?`, pk, keyId(pk), passportNo, now(), now(), u.id);
-    let grant = null;
-    if (!reissue) {
-      grant = mint(u.id, NATION.citizenshipGrant, 'Citizenship grant');
-      gazette('citizenship', `Citizenship conferred on @${u.username}`, `Passport ${passportNo} issued. ${grant.count} ${NATION.currency.plural} worth ${grant.value} ${NATION.currency.symbol} minted to the new citizen.`, `user:${u.id}`);
-    } else {
-      gazette('passport', `Passport ${passportNo} reissued`, 'Previous passport images and .access key revoked.', `user:${u.id}`);
-    }
+      citizen_since = COALESCE(citizen_since, ?) WHERE id = ?`, pk, keyId(pk), chainAddress, passportNo, now(), now(), u.id);
+    if (reissue) gazette('passport', `Passport ${passportNo} reissued`, 'Previous passport images and .access key revoked; the citizen\'s Sigil wallet key was changed on-chain.', `user:${u.id}`);
     // Any earlier passport check on this session refers to the old passport.
     q.run('UPDATE sessions SET passport_until = 0 WHERE user_id = ?', u.id);
-    return { passportNo, grantValue: grant?.value || 0 };
+    return { passportNo };
   });
+  let grant = null;
+  if (!reissue) {
+    grant = await grantCitizenship(u.id);
+    gazette('citizenship', `Citizenship conferred on @${u.username}`, `Passport ${result.passportNo} issued. ${grant.count} ${NATION.currency.plural} worth ${grant.value} ${NATION.currency.symbol} minted on-chain to the new citizen (transaction ${grant.chainTx}).`, `user:${u.id}`);
+  }
+  result.grantValue = grant?.value || 0;
+  result.chainTx = grant?.chainTx || null;
   audit(u.id, reissue ? 'passport_reissued' : 'passport_issued', result);
   res.json({ ok: true, ...result, keyId: keyId(pk), granted: reissue ? 0 : NATION.citizenshipGrant });
 }));
@@ -263,7 +269,7 @@ r.post('/password', requireAccess('account.password', () => ({})), h(async (req,
 
 // ---------------------------------------------------------------- secure-operation challenges
 export const secure = Router();
-const OPS = ['account.keytest', 'wallet.send', 'market.buy', 'bill.vote', 'account.password', 'admin.role', 'admin.status', 'citizenship.decide'];
+const OPS = ['account.keytest', 'wallet.send', 'wallet.break', 'market.buy', 'bill.vote', 'account.password', 'admin.role', 'admin.status', 'citizenship.decide'];
 secure.get('/epoch', (_req, res) => res.json(epochInfo()));
 secure.post('/challenge', requireCitizen, (req, res) => {
   const op = oneOf(req.body.op, 'op', OPS);

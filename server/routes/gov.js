@@ -3,7 +3,8 @@ import { q, tx, now, audit, gazette } from '../db.js';
 import { NATION, SECURITY } from '../config.js';
 import { requireAuth, requireCitizen, requirePassport, requireAccess, requireOfficial, requireAdmin, isOfficial, isAdmin, publicUser } from '../auth.js';
 import { h, str, int, bad, forbidden, notFound, oneOf, page } from '../util.js';
-import { supplyStats, verifyChain, expand, TREASURY } from '../ledger.js';
+import { supplyStats, verifyChain, auditChain, expand, TREASURY } from '../ledger.js';
+import { chainInfo } from '../chain.js';
 import { readPassportToken } from '../passport.js';
 import { AREAS } from '../laws.js';
 
@@ -242,11 +243,12 @@ r.get('/records/ledger', (req, res) => {
   res.json({ items, total, page: p, pages: Math.ceil(total / limit) });
 });
 r.get('/records/ledger/verify', (_req, res) => res.json(verifyChain()));
+r.get('/records/chain', h(async (_req, res) => res.json(await auditChain())));
 r.get('/records/ledger/:id', (req, res) => {
   const t = q.get('SELECT * FROM ledger WHERE id = ?', Number(req.params.id));
   if (!t) throw notFound();
   const serialList = expand(t.serials);
-  res.json({ ...t, serialCount: serialList.length, preview: serialList.slice(0, 24).map((s) => ({ serial: s, rarity: q.get('SELECT rarity FROM tokens WHERE serial = ?', s)?.rarity || 'common' })), from: userBrief(t.from_id), to: userBrief(t.to_id), fromKey: t.from_id ? q.get('SELECT public_key FROM users WHERE id = ?', t.from_id)?.public_key : null });
+  res.json({ ...t, serialCount: serialList.length, preview: serialList.slice(0, 24).map((s) => ({ serial: s, rarity: q.get('SELECT rarity FROM tokens WHERE serial = ?', s)?.rarity || 'common' })), from: userBrief(t.from_id), to: userBrief(t.to_id), fromKey: t.from_id ? q.get('SELECT public_key FROM users WHERE id = ?', t.from_id)?.public_key : null, chain: chainInfo() });
 });
 
 r.get('/records/gazette', (req, res) => {

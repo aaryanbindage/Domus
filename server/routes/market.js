@@ -83,20 +83,26 @@ r.post('/listings/:id/buy', requireAccess('market.buy', (req) => req.body.params
   const p = req.access.params;
   if (Number(p.listingId) !== Number(req.params.id)) throw bad('Listing mismatch');
   const quantity = int(p.quantity, 'Quantity', { min: 1, max: 10_000 });
-  const order = tx(() => {
-    const l = q.get('SELECT * FROM listings WHERE id = ?', Number(p.listingId));
+  const listing = () => q.get('SELECT * FROM listings WHERE id = ?', Number(p.listingId));
+  const check = () => {
+    const l = listing();
     if (!l || l.status !== 'active') throw bad('This listing is not available');
     if (l.seller_id === req.user.id) throw bad('You cannot buy your own listing');
     if (l.price !== Number(p.unitPrice)) throw bad(`The price changed to ${l.price}. Review and try again.`);
     if (quantity > l.quantity) throw bad(`Only ${l.quantity} left`);
-    const total = l.price * quantity;
-    if (balance(req.user.id).available < total) throw bad('Insufficient Sigil balance');
-    const info = q.run('INSERT INTO orders (listing_id, buyer_id, seller_id, quantity, total, created_at, updated_at) VALUES (?,?,?,?,?,?,?)', l.id, req.user.id, l.seller_id, quantity, total, now(), now());
-    const orderId = Number(info.lastInsertRowid);
-    lockForOrder({ buyer: req.user.id, seller: l.seller_id, amount: total, orderId, auth: req.access, op: 'market.buy', params: p });
-    const left = l.quantity - quantity;
-    q.run('UPDATE listings SET quantity = ?, status = ?, updated_at = ? WHERE id = ?', left, left === 0 ? 'sold_out' : 'active', now(), l.id);
-    return orderId;
+    if (balance(req.user.id).available < l.price * quantity) throw bad('Insufficient Sigil balance');
+    return l;
+  };
+  const l0 = check();
+  const order = await lockForOrder({
+    user: req.user, seller: l0.seller_id, amount: l0.price * quantity, auth: req.access, op: 'market.buy', params: p, check,
+    createOrder: () => {
+      const l = listing();
+      const info = q.run('INSERT INTO orders (listing_id, buyer_id, seller_id, quantity, total, created_at, updated_at) VALUES (?,?,?,?,?,?,?)', l.id, req.user.id, l.seller_id, quantity, l.price * quantity, now(), now());
+      const left = l.quantity - quantity;
+      q.run('UPDATE listings SET quantity = ?, status = ?, updated_at = ? WHERE id = ?', left, left === 0 ? 'sold_out' : 'active', now(), l.id);
+      return Number(info.lastInsertRowid);
+    },
   });
   audit(req.user.id, 'order_placed', { order });
   res.json({ ok: true, orderId: order });
@@ -139,24 +145,27 @@ r.post('/orders/:id/ship', requireCitizen, (req, res) => {
   sysMsg(o.id, req.user.id, `📦 Marked as delivered${note ? `: ${note}` : ''}`);
   res.json({ ok: true });
 });
-r.post('/orders/:id/confirm', requirePassport, (req, res) => {
+// Escrow moves happen on-chain first, then the order is updated; claim() guards against a double settle.
+const claim = (o, allowed) => { if (!allowed.includes(q.get('SELECT status FROM orders WHERE id = ?', o.id).status)) throw bad('Order was already settled'); };
+r.post('/orders/:id/confirm', requirePassport, h(async (req, res) => {
   const o = loadOrder(req);
   if (o.buyer_id !== req.user.id) throw forbidden('Only the buyer can confirm receipt');
   if (!['escrow', 'shipped'].includes(o.status)) throw bad('Order cannot be confirmed in its current state');
-  tx(() => { settleOrder(o.id, 'release'); touch(o.id, 'completed'); sysMsg(o.id, req.user.id, '✅ Receipt confirmed — payment released to seller'); });
+  await settleOrder(o.id, 'release', () => { claim(o, ['escrow', 'shipped']); touch(o.id, 'completed'); sysMsg(o.id, req.user.id, '✅ Receipt confirmed — payment released to seller'); });
   res.json({ ok: true });
-});
-r.post('/orders/:id/refund', requireCitizen, (req, res) => {
+}));
+r.post('/orders/:id/refund', requireCitizen, h(async (req, res) => {
   const o = loadOrder(req);
   if (o.seller_id !== req.user.id) throw forbidden('Only the seller can issue a refund');
   if (!['escrow', 'shipped', 'disputed'].includes(o.status)) throw bad('Order cannot be refunded in its current state');
-  tx(() => {
-    settleOrder(o.id, 'refund'); touch(o.id, 'refunded');
+  await settleOrder(o.id, 'refund', () => {
+    claim(o, ['escrow', 'shipped', 'disputed']);
+    touch(o.id, 'refunded');
     q.run("UPDATE listings SET quantity = quantity + ?, status = CASE WHEN status = 'sold_out' THEN 'active' ELSE status END WHERE id = ?", o.quantity, o.listing_id);
     sysMsg(o.id, req.user.id, '↩️ Seller refunded the order');
   });
   res.json({ ok: true });
-});
+}));
 r.post('/orders/:id/dispute', requireCitizen, (req, res) => {
   const o = loadOrder(req);
   if (o.buyer_id !== req.user.id) throw forbidden('Only the buyer can open a dispute');
@@ -166,19 +175,19 @@ r.post('/orders/:id/dispute', requireCitizen, (req, res) => {
   sysMsg(o.id, req.user.id, `⚠️ Dispute opened: ${reason}`);
   res.json({ ok: true });
 });
-r.post('/orders/:id/resolve', requireOfficial, (req, res) => {
+r.post('/orders/:id/resolve', requireOfficial, h(async (req, res) => {
   const o = q.get('SELECT * FROM orders WHERE id = ?', Number(req.params.id));
   if (!o || o.status !== 'disputed') throw bad('Order is not in dispute');
   const outcome = oneOf(req.body.outcome, 'Outcome', ['release', 'refund']);
   const note = str(req.body.note, 'Ruling', { min: 5, max: 2000 });
-  tx(() => {
-    settleOrder(o.id, outcome);
+  await settleOrder(o.id, outcome, () => {
+    claim(o, ['disputed']);
     touch(o.id, outcome === 'release' ? 'completed' : 'refunded');
     sysMsg(o.id, req.user.id, `⚖️ Department of Commerce ruling (${outcome === 'release' ? 'paid to seller' : 'refunded to buyer'}): ${note}`);
   });
   audit(req.user.id, 'dispute_resolved', { order: o.id, outcome });
   res.json({ ok: true });
-});
+}));
 r.post('/orders/:id/review', requireCitizen, (req, res) => {
   const o = loadOrder(req);
   if (o.buyer_id !== req.user.id || o.status !== 'completed') throw bad('You can review only completed purchases');

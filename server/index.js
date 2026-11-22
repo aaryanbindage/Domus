@@ -11,6 +11,7 @@ import market from './routes/market.js';
 import forum from './routes/forum.js';
 import admin from './routes/admin.js';
 import { SERVER_PUBLIC_PEM, SERVER_KEY_FINGERPRINT } from './security.js';
+import * as chain from './chain.js';
 
 seed();
 syncLaws();
@@ -33,7 +34,14 @@ app.use((_req, res, next) => {
 });
 
 app.use(express.json({ limit: '200kb' }));
+app.get('/vendor/ethers.js', (_req, res) => res.sendFile(path.join(ROOT, 'node_modules', 'ethers', 'dist', 'ethers.min.js')));
 app.use(loadSession);
+// Read-only and safe for other origins' tools, so it sits before the CSRF guard.
+app.post('/api/chain/rpc', async (req, res) => {
+  try { res.json({ jsonrpc: '2.0', id: req.body?.id ?? null, result: await chain.rpc(String(req.body?.method), req.body?.params || []) }); }
+  catch (e) { res.status(e.status || 500).json({ jsonrpc: '2.0', id: req.body?.id ?? null, error: { code: -32000, message: e.message } }); }
+});
+app.get('/api/chain', (_req, res) => res.json(chain.chainInfo()));
 app.use('/api', csrf);
 app.use('/api/account', account);
 app.use('/api/secure', secure);
@@ -57,4 +65,6 @@ app.use((err, req, res, _next) => {
   res.status(status).json(body);
 });
 
+const info = await chain.init();
+console.log(`[chain] Sigil contract ${info.contract} on ${info.network} (chain ${info.chainId}); Treasury relayer ${info.registrar}`);
 app.listen(PORT, () => console.log(`${NATION.name} is online at ${PUBLIC_URL}${DEV ? '  (development mode: email codes print here)' : ''}`));

@@ -3,7 +3,8 @@ import { q, audit } from '../db.js';
 import { NATION } from '../config.js';
 import { requireCitizen, requireAccess } from '../auth.js';
 import { h, str, int, bad, page } from '../util.js';
-import { balance, transfer, breakSigil, RARITIES } from '../ledger.js';
+import { balance, transfer, breakSigil, newIntent, RARITIES } from '../ledger.js';
+import { chainInfo, chainBalance, nonceOf, citizenOf } from '../chain.js';
 
 const r = Router();
 
@@ -45,16 +46,31 @@ r.post('/send', requireAccess('wallet.send', (req) => req.body.params), h(async 
   const to = q.get("SELECT id, username FROM users WHERE username = ? AND status = 'citizen'", String(p.to || ''));
   if (!to) throw bad('Recipient is not a citizen');
   const serials = Array.isArray(p.serials) && p.serials.length ? p.serials.map(Number) : null;
-  const entry = transfer({ from: req.user.id, to: to.id, amount, memo, options: { protectRare: !!p.protectRare, serials }, auth: req.access, op: 'wallet.send', params: p });
+  const entry = await transfer({ user: req.user, to: to.id, amount, memo, options: { protectRare: !!p.protectRare, serials }, auth: req.access, op: 'wallet.send', params: p });
   audit(req.user.id, 'transfer', { to: to.id, amount, ledger: entry.id });
-  res.json({ ok: true, ledgerId: entry.id, hash: entry.hash, balance: balance(req.user.id) });
+  res.json({ ok: true, ledgerId: entry.id, hash: entry.hash, chainTx: entry.chainTx, balance: balance(req.user.id) });
 }));
 
-// Break one Sigil into change at the Mint (value-neutral, so no .access signature needed).
-r.post('/break', requireCitizen, (req, res) => {
-  const result = breakSigil(req.user.id, int(req.body.serial, 'Sigil'), { reason: 'Exchanged by the holder' });
-  audit(req.user.id, 'sigil_broken', { serial: req.body.serial, ...result });
+// Break one Sigil into change at the Mint. The holder signs it, because on-chain only they can move their Sigils.
+r.post('/break', requireAccess('wallet.break', (req) => req.body.params), h(async (req, res) => {
+  const p = req.access.params;
+  const result = await breakSigil({ user: req.user, serial: int(p.serial, 'Sigil'), auth: req.access, op: 'wallet.break', params: p });
+  audit(req.user.id, 'sigil_broken', { serial: p.serial, ...result });
   res.json({ ok: true, ...result, balance: balance(req.user.id) });
-});
+}));
+
+// ---------------------------------------------------------------- the built-in Sigil wallet
+// Citizens never need wallet software: their signing key is derived in the browser from the
+// .access key, and the Treasury relays their signed payments and pays the gas.
+r.get('/chain', requireCitizen, h(async (req, res) => {
+  const [onChain, nonce, citizen] = await Promise.all([chainBalance(req.user.id), nonceOf(req.user.id), citizenOf(req.user.id)]);
+  res.json({ ...chainInfo(), citizenId: req.user.id, address: req.user.chain_address, nonce, onChain, citizen, ledger: balance(req.user.id) });
+}));
+// The exact message the citizen's wallet must sign for an operation (checked again on-chain).
+r.post('/chain/intent', requireCitizen, h(async (req, res) => {
+  const op = String(req.body.op || '');
+  if (!['wallet.send', 'wallet.break', 'market.buy'].includes(op)) throw bad('This operation has no Sigil payment');
+  res.json(await newIntent(req.user.id, op, req.body.params || {}));
+}));
 
 export default r;

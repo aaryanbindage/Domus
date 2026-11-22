@@ -16,8 +16,13 @@
   },
   "license": "MIT",
   "dependencies": {
+    "ethers": "^6.17.0",
     "express": "^4.22.3",
+    "ganache": "^7.9.2",
     "multer": "^2.5.0",
     "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "solc": "^0.8.28"
   }
 }

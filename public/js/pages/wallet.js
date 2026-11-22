@@ -30,7 +30,7 @@ export async function wallet(view, _p, query) {
   <div class="card pad" style="margin-top:18px"><div class="row between"><div class="row"><span class="dept-icon">${icon('key')}</span><div><b>Aurum wallet</b><div class="small muted">Built in — no app or crypto wallet to install. It opens with your .access key, and the Treasury pays the network fees.</div></div></div>
     ${d.onChain.value === w.available + w.inEscrow ? html`<span class="badge ok">${icon('check')} Matches the chain</span>` : html`<span class="badge warn">Syncing with the chain</span>`}</div>
     ${describe([['Wallet address', html`<span class="mono small">${d.address || 'not linked'}</span>`], ['Citizen account on-chain', html`#${d.citizenId} · ${d.citizen.active ? 'active citizen' : 'suspended'}`], ['On-chain balance', html`<b>${num(d.onChain.value)} ${c.symbol}</b> in ${num(d.onChain.count)} Sigils (including escrow)`], ['Network', `${d.network} · chain ${d.chainId}`], ['Sigil contract', html`<span class="mono small">${d.contract}</span>`], ['Payments signed', num(d.nonce)]])}
-    <p class="tiny muted" style="margin:8px 0 0">Sigils can only be held by verified citizens, so they can't be listed on crypto exchanges and have no cash value. <a href="#/records/treasury">Audit the chain</a></p></div>
+    <p class="tiny muted" style="margin:8px 0 0">Sigils can only be held by verified citizens, so they can't be listed on crypto exchanges and have no cash value. <a href="#/records/ledger">Audit the chain</a></p></div>
 
   <div class="split" style="margin-top:18px">
     <div class="card"><div class="card-head"><h3>My collection</h3><span class="small muted">${num(tokens.total)} Sigils · click one to break it into change at the Mint</span></div>

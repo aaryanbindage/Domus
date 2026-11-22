@@ -137,7 +137,7 @@ export function verifyChain() {
     if (!serverVerify(row.hash, row.server_sig)) problems.push({ id: row.id, issue: 'Invalid server signature' });
     if (row.sender_sig) {
       const p = body.params;
-      const bound = row.challenge.split('.')[3] === opHash(p.op, p.params);
+      const bound = row.challenge.split('|')[3] === opHash(p.op, p.params);
       // Signatures made with a since-rotated key cannot be checked against the current key; report rather than fail.
       if (!bound) problems.push({ id: row.id, issue: 'Citizen signature not bound to these parameters' });
       else if (!verifyUserSignature(keys.get(row.from_id) || '', row.challenge, row.sender_sig)) problems.push({ id: row.id, issue: 'Citizen signature does not match current public key (key may have been reissued)', soft: true });

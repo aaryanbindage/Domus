@@ -3,7 +3,7 @@ import { q, tx, now, audit, gazette } from '../db.js';
 import { NATION, SECURITY } from '../config.js';
 import { requireAuth, requireCitizen, requirePassport, requireAccess, requireOfficial, requireAdmin, isOfficial, isAdmin, publicUser } from '../auth.js';
 import { h, str, int, bad, forbidden, notFound, oneOf, page } from '../util.js';
-import { supplyStats, verifyChain, expand } from '../ledger.js';
+import { supplyStats, verifyChain, expand, rarityFor } from '../ledger.js';
 import { readPassportToken } from '../passport.js';
 
 const r = Router();
@@ -232,7 +232,8 @@ r.get('/records/ledger/verify', (_req, res) => res.json(verifyChain()));
 r.get('/records/ledger/:id', (req, res) => {
   const t = q.get('SELECT * FROM ledger WHERE id = ?', Number(req.params.id));
   if (!t) throw notFound();
-  res.json({ ...t, serialList: expand(t.serials).slice(0, 2000), from: userBrief(t.from_id), to: userBrief(t.to_id), fromKey: t.from_id ? q.get('SELECT public_key FROM users WHERE id = ?', t.from_id)?.public_key : null });
+  const serialList = expand(t.serials);
+  res.json({ ...t, serialCount: serialList.length, preview: serialList.slice(0, 24).map((s) => ({ serial: s, rarity: rarityFor(s).id })), from: userBrief(t.from_id), to: userBrief(t.to_id), fromKey: t.from_id ? q.get('SELECT public_key FROM users WHERE id = ?', t.from_id)?.public_key : null });
 });
 
 r.get('/records/gazette', (req, res) => {

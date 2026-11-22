@@ -92,19 +92,19 @@ export const opHash = (op, params) => sha256(canonical({ op, params })).slice(0,
  */
 export function issueChallenge(userId, op, params) {
   const e = currentEpoch();
-  const payload = ['VCH1', userId, op, opHash(op, params), e, randomToken(12)].join('.');
+  const payload = ['VCH1', userId, op, opHash(op, params), e, randomToken(12)].join('|');
   const mac = b64url(crypto.createHmac('sha256', epochKey(e)).update(payload).digest());
-  return { challenge: `${payload}.${mac}`, epoch: e, expiresAt: (e + 2) * SECURITY.epochSeconds * 1000 };
+  return { challenge: `${payload}|${mac}`, epoch: e, expiresAt: (e + 2) * SECURITY.epochSeconds * 1000 };
 }
 
 export function checkChallenge(challenge, userId, op, params) {
-  const parts = String(challenge || '').split('.');
+  const parts = String(challenge || '').split('|');
   if (parts.length !== 7 || parts[0] !== 'VCH1') return 'Malformed challenge';
   const [, uid, cop, chash, ce, nonce, mac] = parts;
   const e = Number(ce);
   const cur = currentEpoch();
   if (!(e === cur || e === cur - 1)) return 'Challenge expired — the server key has rotated';
-  const expected = crypto.createHmac('sha256', epochKey(e)).update(parts.slice(0, 6).join('.')).digest();
+  const expected = crypto.createHmac('sha256', epochKey(e)).update(parts.slice(0, 6).join('|')).digest();
   const got = Buffer.from(mac, 'base64url');
   if (got.length !== expected.length || !crypto.timingSafeEqual(got, expected)) return 'Challenge was not issued by this server';
   if (Number(uid) !== userId) return 'Challenge belongs to another account';

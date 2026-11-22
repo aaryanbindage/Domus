@@ -1,34 +1,23 @@
 // The Sigil ledger. Every Sigil is a numbered collectible whose rarity is derived from
-// its serial, and each rarity has a fixed face value in SGL. Balances and prices are
-// in SGL value. Every movement is a hash-chained, server-signed ledger entry; transfers
-// initiated by citizens also carry the citizen's own ECDSA signature from their .access key.
-import crypto from 'node:crypto';
+// its serial, and each rarity has a fixed face value in SGL. Ownership lives on-chain in
+// the SigilLedger contract (see chain.js): every grant, payment, Mint exchange and escrow
+// movement is a transaction there, and citizen payments are signed with the citizen's own
+// Sigil wallet key. This database mirrors the chain for fast queries and keeps a
+// hash-chained, server-signed journal of every movement with its transaction hash.
 import { q, tx, now } from './db.js';
 import { canonical, sha256, serverSign, serverVerify, verifyUserSignature, opHash } from './security.js';
 import { NATION } from './config.js';
+import { RARITIES, RANK, rarityFor, valueOf } from './rarity.js';
+import * as chain from './chain.js';
 
+export { RARITIES, rarityFor, valueOf };
 /** Owner id of the Treasury reserve (tokens out of circulation). */
 export const TREASURY = 0;
 const VALUES = NATION.currency.values;
-
-export const RARITIES = [
-  { id: 'legendary', rank: 5, odds: 0.002 },
-  { id: 'epic', rank: 4, odds: 0.01 },
-  { id: 'rare', rank: 3, odds: 0.048 },
-  { id: 'uncommon', rank: 2, odds: 0.16 },
-  { id: 'common', rank: 1, odds: 1 },
-].map((r) => ({ ...r, value: VALUES[r.id] }));
-const RANK = Object.fromEntries(RARITIES.map((r) => [r.id, r]));
-export const valueOf = (rarity) => VALUES[rarity];
+const SYM = NATION.currency.symbol;
 /** SQL expression giving the SGL value of a tokens row. */
 const VALUE_SQL = `CASE rarity ${RARITIES.map((r) => `WHEN '${r.id}' THEN ${r.value}`).join(' ')} END`;
 
-export function rarityFor(serial) {
-  const r = crypto.createHash('sha256').update(`sigil:${serial}`).digest().readUInt32BE(0) / 2 ** 32;
-  let acc = 0;
-  for (const t of RARITIES) { acc += t.odds; if (r < acc) return t; }
-  return RARITIES.at(-1);
-}
 const fail = (msg) => Object.assign(new Error(msg), { status: 400 });
 
 // Store serial lists compactly as ranges: "1-5,9,12-20"
@@ -57,36 +46,47 @@ function append(entry) {
   const body = {
     ts, type: entry.type, from: entry.from ?? null, to: entry.to ?? null, amount: entry.amount,
     serials: entry.serials, memo: entry.memo || '', ref: entry.ref ?? null,
-    params: entry.params ?? null, challenge: entry.challenge ?? null, sig: entry.sig ?? null,
+    params: entry.params ?? null, challenge: entry.challenge ?? null, sig: entry.sig ?? null, chainTx: entry.chainTx ?? undefined,
   };
   const hash = sha256(prev + canonical(body));
-  const r = q.run(`INSERT INTO ledger (ts,type,from_id,to_id,amount,serials,memo,ref,op_params,challenge,sender_sig,prev_hash,hash,server_sig)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+  const r = q.run(`INSERT INTO ledger (ts,type,from_id,to_id,amount,serials,memo,ref,op_params,challenge,sender_sig,prev_hash,hash,server_sig,chain_tx)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   ts, body.type, body.from, body.to, body.amount, body.serials, body.memo, body.ref,
-  body.params == null ? null : JSON.stringify(body.params), body.challenge, body.sig, prev, hash, serverSign(hash));
+  body.params == null ? null : JSON.stringify(body.params), body.challenge, body.sig, prev, hash, serverSign(hash), body.chainTx ?? null);
   return { id: Number(r.lastInsertRowid), hash };
 }
 
-const nextSerial = () => (q.get('SELECT MAX(serial) m FROM tokens')?.m || 0) + 1;
 function insertToken(serial, owner, rarity) {
   q.run('INSERT INTO tokens (serial, owner_id, rarity, rarity_rank, minted_at) VALUES (?,?,?,?,?)', serial, owner, rarity.id, rarity.rank, now());
 }
 
-/** Citizenship grant: `count` new Sigils, each with the rarity fixed by its serial. */
-export function mint(userId, count, memo = 'Citizenship grant') {
-  return tx(() => {
-    const start = nextSerial();
-    const serials = [];
-    let value = 0;
-    for (let s = start; s < start + count; s++) {
-      const r = rarityFor(s);
-      insertToken(s, userId, r);
-      serials.push(s); value += r.value;
-    }
-    const entry = append({ type: 'mint', to: userId, amount: value, serials: compress(serials), memo: `${memo}: ${count} Sigils worth ${value} ${NATION.currency.symbol}` });
-    return { ...entry, count, value };
+// Ledger operations run one at a time: each plans against the current holdings, executes
+// on-chain, then mirrors the result here, so the plan can never go stale in between.
+let lock = Promise.resolve();
+export function serialized(fn) {
+  const p = lock.then(fn, fn);
+  lock = p.catch(() => {});
+  return p;
+}
+
+/** Register (or re-key) a citizen's Sigil wallet on-chain. */
+export const registerWallet = (userId, address) => serialized(() => chain.registerCitizen(userId, address));
+export const setCitizenActive = (userId, active) => serialized(() => chain.setActive(userId, active));
+
+/** Citizenship grant: the contract mints exactly one grant per citizen, ever. */
+export function grantCitizenship(userId, memo = 'Citizenship grant') {
+  return serialized(async () => {
+    const g = await chain.grant(userId);
+    return tx(() => {
+      let value = 0;
+      for (let s = g.first; s < g.first + g.count; s++) { const r = rarityFor(s); insertToken(s, userId, r); value += r.value; }
+      if (value !== g.value) throw new Error(`Chain and ledger disagree on the grant value (${g.value} vs ${value})`);
+      const entry = append({ type: 'mint', to: userId, amount: value, serials: compress(range(g.first, g.count)), memo: `${memo}: ${g.count} Sigils worth ${value} ${SYM}`, chainTx: g.hash });
+      return { ...entry, count: g.count, value, chainTx: g.hash };
+    });
   });
 }
+const range = (first, count) => Array.from({ length: count }, (_, i) => first + i);
 
 export function balance(userId) {
   const r = q.get(`SELECT COALESCE(SUM(CASE WHEN locked_order IS NULL THEN ${VALUE_SQL} END), 0) free,
@@ -94,63 +94,56 @@ export function balance(userId) {
   return { available: r.free, inEscrow: r.locked, tokens: r.tokens };
 }
 
-const spendable = (userId, protectRare) => q.all(`SELECT serial, rarity FROM tokens WHERE owner_id = ? AND locked_order IS NULL ${protectRare ? 'AND rarity_rank <= 2' : ''}
-  ORDER BY rarity_rank ASC, serial DESC`, userId).map((t) => ({ ...t, value: VALUES[t.rarity] }));
+const holdingsOf = (userId) => q.all('SELECT serial, rarity FROM tokens WHERE owner_id = ? AND locked_order IS NULL', userId)
+  .map((t) => ({ serial: t.serial, rarity: t.rarity, rank: RANK[t.rarity].rank, value: VALUES[t.rarity] }));
 
 /**
- * Mint exchange: break one Sigil into change of the same total value, like breaking a
- * banknote. The broken Sigil goes into the Treasury reserve (out of circulation, still a
- * collectible); the change comes from lower-value Sigils already in the reserve, topped up
- * with newly minted commons. Circulating value is unchanged.
+ * Mint exchange plan for one Sigil: it goes into the Treasury reserve, and the change comes
+ * from lower-value reserve Sigils first, then newly minted commons. Mutates the working sets.
  */
-export function breakSigil(userId, serial, { reason = 'Change for a payment' } = {}) {
-  return tx(() => {
-    const t = q.get('SELECT * FROM tokens WHERE serial = ? AND owner_id = ? AND locked_order IS NULL', serial, userId);
-    if (!t) throw fail('You do not hold that Sigil');
-    const v = VALUES[t.rarity];
-    if (v <= VALUES.common) throw fail('A common Sigil cannot be broken into smaller change');
-    q.run('UPDATE tokens SET owner_id = ? WHERE serial = ?', TREASURY, serial);
-    append({ type: 'exchange_in', from: userId, to: TREASURY, amount: v, serials: String(serial), memo: `Sigil #${serial} (${t.rarity}) deposited at the Mint — ${reason}` });
-    // Change: largest reserve denominations below v first, then fresh commons for the rest.
-    const change = [];
-    let left = v;
-    for (const r of RARITIES.filter((x) => x.value < v)) {
-      while (left >= r.value) {
-        const res = q.get('SELECT serial FROM tokens WHERE owner_id = ? AND rarity = ? ORDER BY serial LIMIT 1', TREASURY, r.id);
-        if (!res) break;
-        q.run('UPDATE tokens SET owner_id = ? WHERE serial = ?', userId, res.serial);
-        change.push(res.serial); left -= r.value;
-      }
+function planBreak(token, reserve, nextFresh) {
+  const v = token.value;
+  if (v <= VALUES.common) throw fail('A common Sigil cannot be broken into smaller change');
+  const change = [];
+  let left = v;
+  for (const r of RARITIES.filter((x) => x.value < v)) {
+    while (left >= r.value) {
+      const i = reserve.findIndex((t) => t.rarity === r.id);
+      if (i < 0) break;
+      change.push(reserve.splice(i, 1)[0]); left -= r.value;
     }
-    const fresh = [];
-    for (let s = nextSerial(); left > 0; s++, left--) { insertToken(s, userId, RANK.common); fresh.push(s); }
-    change.push(...fresh);
-    append({ type: 'exchange_out', from: TREASURY, to: userId, amount: v, serials: compress(change),
-      memo: `Change for Sigil #${serial}: ${change.length} Sigils${fresh.length ? ` (${fresh.length} newly minted Mint-change commons)` : ''}` });
-    return { value: v, change: change.length };
-  });
+  }
+  reserve.push(token);
+  reserve.sort((a, b) => a.serial - b.serial);
+  const fresh = range(nextFresh, left).map((serial) => ({ serial, rarity: 'common', rank: 1, value: VALUES.common, fresh: true }));
+  return { brk: { serial: token.serial, change: change.map((t) => t.serial), mintCommons: left }, gained: [...change, ...fresh] };
 }
 
 /**
- * Choose Sigils worth exactly `amount` SGL. Commonest first so collectibles are kept;
- * if exact change is impossible, the smallest sufficient Sigil is broken at the Mint.
+ * Choose Sigils worth exactly `amount` SGL. Commonest first so collectibles are kept; if
+ * exact change is impossible, the smallest sufficient Sigil is broken at the Mint first.
+ * Pure: returns { serials, breaks } for the contract without changing anything.
  */
-function pick(userId, amount, { protectRare = false, serials = null } = {}) {
+async function plan(userId, amount, { protectRare = false, serials = null } = {}) {
+  let holdings = holdingsOf(userId);
   if (serials?.length) {
     const want = [...new Set(serials.map(Number))];
-    const rows = want.map((s) => q.get('SELECT serial, rarity FROM tokens WHERE serial = ? AND owner_id = ? AND locked_order IS NULL', s, userId)).filter(Boolean);
-    if (rows.length !== want.length) throw fail('You do not own all of the selected Sigils');
-    const total = rows.reduce((a, r) => a + VALUES[r.rarity], 0);
-    if (total !== amount) throw fail(`The selected Sigils are worth ${total} ${NATION.currency.symbol}, not ${amount}`);
-    return want;
+    const rows = want.map((s) => holdings.find((h) => h.serial === s));
+    if (rows.some((r) => !r)) throw fail('You do not own all of the selected Sigils');
+    const total = rows.reduce((a, r) => a + r.value, 0);
+    if (total !== amount) throw fail(`The selected Sigils are worth ${total} ${SYM}, not ${amount}`);
+    return { serials: want, breaks: [], picked: true };
   }
+  const reserve = q.all('SELECT serial, rarity FROM tokens WHERE owner_id = ? ORDER BY serial', TREASURY).map((t) => ({ serial: t.serial, rarity: t.rarity, rank: RANK[t.rarity].rank, value: VALUES[t.rarity] }));
+  let nextFresh = await chain.nextSerial();
+  const breaks = [];
   for (let attempt = 0; attempt < 8; attempt++) {
-    const rows = spendable(userId, protectRare);
+    const rows = holdings.filter((h) => !protectRare || h.rank <= 2).sort((a, b) => a.rank - b.rank || b.serial - a.serial);
     const have = rows.reduce((a, r) => a + r.value, 0);
     if (have < amount) {
       throw fail(protectRare
-        ? `Your common and uncommon Sigils are worth ${have} ${NATION.currency.symbol}. Untick "protect rare Sigils" or pick Sigils manually.`
-        : `Insufficient balance (available ${have} ${NATION.currency.symbol})`);
+        ? `Your common and uncommon Sigils are worth ${have} ${SYM}. Untick "protect rare Sigils" or pick Sigils manually.`
+        : `Insufficient balance (available ${have} ${SYM})`);
     }
     const chosen = [];
     let sum = 0;
@@ -160,42 +153,155 @@ function pick(userId, amount, { protectRare = false, serials = null } = {}) {
     for (const r of [...chosen].sort((a, b) => b.value - a.value)) {
       if (over > 0 && r.value <= over && r !== chosen.at(-1)) { chosen.splice(chosen.indexOf(r), 1); over -= r.value; }
     }
-    if (over === 0) return chosen.map((r) => r.serial);
+    if (over === 0) return { serials: chosen.map((r) => r.serial), breaks };
     // No exact change: break the last (largest) chosen Sigil into change and try again.
-    breakSigil(userId, chosen.at(-1).serial);
+    const big = chosen.at(-1);
+    const { brk, gained } = planBreak(big, reserve, nextFresh);
+    nextFresh += brk.mintCommons;
+    breaks.push(brk);
+    holdings = holdings.filter((h) => h !== big).concat(gained);
   }
   throw fail('Could not make exact change — try picking Sigils manually');
 }
 
-const valueOfSerials = (serials) => serials.reduce((a, s) => a + VALUES[q.get('SELECT rarity FROM tokens WHERE serial = ?', s).rarity], 0);
+/** Mirror executed Mint exchanges in the database and journal. */
+function applyBreaks(userId, breaks, minted, chainTx, reason) {
+  const fresh = minted.flatMap((m) => range(m.first, m.count));
+  for (const b of breaks) {
+    const t = q.get('SELECT rarity FROM tokens WHERE serial = ?', b.serial);
+    const v = VALUES[t.rarity];
+    q.run('UPDATE tokens SET owner_id = ? WHERE serial = ?', TREASURY, b.serial);
+    append({ type: 'exchange_in', from: userId, to: TREASURY, amount: v, serials: String(b.serial), memo: `Sigil #${b.serial} (${t.rarity}) deposited at the Mint — ${reason}`, chainTx });
+    for (const s of b.change) q.run('UPDATE tokens SET owner_id = ? WHERE serial = ?', userId, s);
+    const made = fresh.splice(0, b.mintCommons);
+    if (made.length !== b.mintCommons) throw new Error('Chain minted a different amount of change than planned');
+    for (const s of made) insertToken(s, userId, RANK.common);
+    append({ type: 'exchange_out', from: TREASURY, to: userId, amount: v, serials: compress([...b.change, ...made]),
+      memo: `Change for Sigil #${b.serial}: ${b.change.length + made.length} Sigils${made.length ? ` (${made.length} newly minted Mint-change commons)` : ''}`, chainTx });
+  }
+}
 
-export function transfer({ from, to, amount, memo, options, auth, op, params }) {
-  if (from === to) throw fail('Cannot send Sigils to yourself');
-  return tx(() => {
-    const serials = pick(from, amount, options);
-    for (const s of serials) q.run('UPDATE tokens SET owner_id = ? WHERE serial = ?', to, s);
-    return append({ type: 'transfer', from, to, amount, serials: compress(serials), memo, params: { op, params }, challenge: auth?.challenge, sig: auth?.signature });
+// ---------------------------------------------------------------- signed intents
+// What a citizen's Sigil wallet signs for each operation. The server rebuilds the message
+// from the operation's own parameters, so a signature can only ever authorise that exact
+// payment; the contract checks it again on-chain.
+const DEADLINE_SECONDS = 15 * 60;
+export function intentFor(userId, op, params, { nonce, deadline }) {
+  const p = params || {};
+  if (op === 'wallet.break') {
+    return { primaryType: 'Exchange', message: { from: userId, serial: Number(p.serial), nonce: Number(nonce), deadline: Number(deadline) } };
+  }
+  let to; let ref; let serials = null;
+  if (op === 'wallet.send') {
+    const r = q.get("SELECT id FROM users WHERE username = ? AND status = 'citizen'", String(p.to || ''));
+    if (!r) throw fail('Recipient is not a citizen');
+    to = r.id; ref = chain.refOf('wallet.send');
+    serials = Array.isArray(p.serials) && p.serials.length ? [...new Set(p.serials.map(Number))] : null;
+  } else if (op === 'market.buy') {
+    to = chain.ESCROW_ID; ref = chain.refOf(`market.buy:${Number(p.listingId)}`);
+  } else throw fail('This operation has no Sigil payment');
+  const amount = op === 'market.buy' ? Number(p.unitPrice) * Number(p.quantity) : Number(p.amount);
+  if (!Number.isSafeInteger(amount) || amount <= 0) throw fail('Invalid amount');
+  return { primaryType: 'Transfer', serials, message: { from: userId, to, amount, serialsHash: chain.serialsHash(serials), ref, nonce: Number(nonce), deadline: Number(deadline) } };
+}
+export async function newIntent(userId, op, params) {
+  const nonce = await chain.nonceOf(userId);
+  const { primaryType, message } = intentFor(userId, op, params, { nonce, deadline: Math.floor(Date.now() / 1000) + DEADLINE_SECONDS });
+  return { domain: chain.chainInfo().domain, types: { [primaryType]: chain.TYPES[primaryType] }, primaryType, message };
+}
+function checkSigned(user, op, params, signed) {
+  if (!signed?.sig) throw fail('This payment must be signed with your Sigil wallet (from your .access key)');
+  if (!user.chain_address) throw fail('Your Sigil wallet is not linked yet — open your wallet to link it');
+  const it = intentFor(user.id, op, params, signed);
+  if (!chain.verifyIntent(it.primaryType, it.message, signed.sig, user.chain_address)) throw fail('The Sigil wallet signature does not match this payment');
+  return it;
+}
+
+// ---------------------------------------------------------------- operations
+
+export function transfer({ user, to, amount, memo, options, auth, op, params }) {
+  if (user.id === to) throw fail('Cannot send Sigils to yourself');
+  return serialized(async () => {
+    const it = checkSigned(user, op, params, auth?.chain);
+    const p = await plan(user.id, amount, options);
+    if (p.picked && JSON.stringify(p.serials) !== JSON.stringify(it.serials)) throw fail('Selected Sigils do not match the signature');
+    const r = await chain.transfer(it.message, auth.chain.sig, p.serials, p.breaks);
+    return tx(() => {
+      applyBreaks(user.id, p.breaks, r.minted, r.hash, 'change for a payment');
+      for (const s of p.serials) q.run('UPDATE tokens SET owner_id = ? WHERE serial = ?', to, s);
+      return append({ type: 'transfer', from: user.id, to, amount, serials: compress(p.serials), memo, params: { op, params }, challenge: auth?.challenge, sig: auth?.signature, chainTx: r.hash });
+    });
   });
 }
 
-export function lockForOrder({ buyer, seller, amount, orderId, auth, op, params }) {
-  return tx(() => {
+/**
+ * Pay into marketplace escrow. `check()` re-validates the order under the ledger lock before
+ * anything moves; `createOrder()` runs in the same database transaction as the mirror.
+ */
+export function lockForOrder({ user, seller, amount, auth, op, params, check, createOrder }) {
+  return serialized(async () => {
+    check();
+    const it = checkSigned(user, op, params, auth?.chain);
     // Keep the buyer's collectibles if commons and uncommons can cover it.
-    let serials;
-    try { serials = pick(buyer, amount, { protectRare: true }); } catch { serials = pick(buyer, amount, { protectRare: false }); }
-    for (const s of serials) q.run('UPDATE tokens SET locked_order = ? WHERE serial = ?', orderId, s);
-    return append({ type: 'escrow', from: buyer, to: seller, amount, serials: compress(serials), memo: `Escrow for order #${orderId}`, ref: `order:${orderId}`, params: { op, params }, challenge: auth?.challenge, sig: auth?.signature });
+    let p;
+    try { p = await plan(user.id, amount, { protectRare: true }); } catch { p = await plan(user.id, amount, { protectRare: false }); }
+    const r = await chain.transfer(it.message, auth.chain.sig, p.serials, p.breaks);
+    return tx(() => {
+      const orderId = createOrder();
+      applyBreaks(user.id, p.breaks, r.minted, r.hash, 'change for a purchase');
+      for (const s of p.serials) q.run('UPDATE tokens SET locked_order = ? WHERE serial = ?', orderId, s);
+      append({ type: 'escrow', from: user.id, to: seller, amount, serials: compress(p.serials), memo: `Escrow for order #${orderId}`, ref: `order:${orderId}`, params: { op, params }, challenge: auth?.challenge, sig: auth?.signature, chainTx: r.hash });
+      return orderId;
+    });
   });
 }
 
-export function settleOrder(orderId, outcome /* 'release' | 'refund' */) {
-  return tx(() => {
+/** Release escrow to the seller or refund it to the buyer; `then()` runs in the same DB transaction. */
+export function settleOrder(orderId, outcome /* 'release' | 'refund' */, then = () => {}) {
+  return serialized(async () => {
     const o = q.get('SELECT * FROM orders WHERE id = ?', orderId);
     const serials = q.all('SELECT serial FROM tokens WHERE locked_order = ?', orderId).map((r) => r.serial);
     const to = outcome === 'release' ? o.seller_id : o.buyer_id;
-    for (const s of serials) q.run('UPDATE tokens SET owner_id = ?, locked_order = NULL WHERE serial = ?', to, s);
-    return append({ type: outcome === 'release' ? 'escrow_release' : 'escrow_refund', from: o.buyer_id, to, amount: valueOfSerials(serials), serials: compress(serials), memo: `Order #${orderId} ${outcome === 'release' ? 'payment released to seller' : 'refunded to buyer'}`, ref: `order:${orderId}` });
+    const r = await chain.releaseEscrow(to, serials, chain.refOf(`order:${orderId}`));
+    return tx(() => {
+      for (const s of serials) q.run('UPDATE tokens SET owner_id = ?, locked_order = NULL WHERE serial = ?', to, s);
+      append({ type: outcome === 'release' ? 'escrow_release' : 'escrow_refund', from: o.buyer_id, to, amount: valueOfSerials(serials), serials: compress(serials), memo: `Order #${orderId} ${outcome === 'release' ? 'payment released to seller' : 'refunded to buyer'}`, ref: `order:${orderId}`, chainTx: r.hash });
+      return then();
+    });
   });
+}
+const valueOfSerials = (serials) => serials.reduce((a, s) => a + VALUES[q.get('SELECT rarity FROM tokens WHERE serial = ?', s).rarity], 0);
+
+/** Break one Sigil into change at the Mint, signed by the holder. */
+export function breakSigil({ user, serial, auth, op, params }) {
+  return serialized(async () => {
+    const it = checkSigned(user, op, params, auth?.chain);
+    const token = holdingsOf(user.id).find((h) => h.serial === serial);
+    if (!token) throw fail('You do not hold that Sigil');
+    const reserve = q.all('SELECT serial, rarity FROM tokens WHERE owner_id = ? ORDER BY serial', TREASURY).map((t) => ({ serial: t.serial, rarity: t.rarity, value: VALUES[t.rarity] }));
+    const { brk } = planBreak(token, reserve, await chain.nextSerial());
+    const r = await chain.exchange(it.message, auth.chain.sig, brk.change, brk.mintCommons);
+    tx(() => applyBreaks(user.id, [brk], r.minted, r.hash, 'exchanged by the holder'));
+    return { value: token.value, change: brk.change.length + brk.mintCommons, chainTx: r.hash };
+  });
+}
+
+/**
+ * Compare every Sigil's owner in this database with the contract. Escrowed Sigils are held
+ * by the contract's ESCROW account; the Treasury reserve by its TREASURY account.
+ */
+export async function auditChain() {
+  const rows = q.all('SELECT serial, owner_id, locked_order FROM tokens ORDER BY serial');
+  const total = await chain.nextSerial() - 1;
+  const owners = rows.length ? await chain.ownersOf(1, total) : [];
+  const mismatches = [];
+  if (total !== rows.length) mismatches.push({ issue: `Chain has ${total} Sigils, ledger has ${rows.length}` });
+  for (const t of rows) {
+    const want = t.locked_order ? 'escrow' : t.owner_id;
+    const got = owners[t.serial - 1];
+    if (got !== want && mismatches.length < 20) mismatches.push({ serial: t.serial, ledger: want, chain: got });
+  }
+  return { ...chain.chainInfo(), sigils: total, checked: rows.length, ok: mismatches.length === 0, mismatches };
 }
 
 /** Re-verify the whole chain: hashes, server signatures, and every citizen signature. */
@@ -209,6 +315,7 @@ export function verifyChain() {
     const body = {
       ts: row.ts, type: row.type, from: row.from_id, to: row.to_id, amount: row.amount, serials: row.serials,
       memo: row.memo, ref: row.ref, params: row.op_params ? JSON.parse(row.op_params) : null, challenge: row.challenge, sig: row.sender_sig,
+      chainTx: row.chain_tx ?? undefined,
     };
     if (row.prev_hash !== prev) problems.push({ id: row.id, issue: 'Broken link to previous entry' });
     if (sha256(row.prev_hash + canonical(body)) !== row.hash) problems.push({ id: row.id, issue: 'Entry contents do not match its hash' });

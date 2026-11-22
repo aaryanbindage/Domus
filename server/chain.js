@@ -110,7 +110,7 @@ export const serialsHash = (serials) => (serials?.length ? keccak256(AbiCoder.de
 export const refOf = (text) => keccak256(toUtf8Bytes(text));
 
 /** The message a citizen proves control of their chain key with, when it is linked to their account. */
-export const linkMessage = (username, keyId) => `${NATION.name}: link my Domus wallet to @${username}, key ${keyId}`;
+export const linkMessage = (username, keyId) => `${NATION.name}: link my Aurum wallet to @${username}, key ${keyId}`;
 export const verifyLink = (username, keyId, address, sig) => {
   try { return verifyMessage(linkMessage(username, keyId), sig).toLowerCase() === String(address).toLowerCase(); } catch { return false; }
 };
@@ -118,15 +118,21 @@ export function verifyIntent(primaryType, message, sig, signer) {
   try { return verifyTypedData(info.domain, { [primaryType]: TYPES[primaryType] }, message, sig).toLowerCase() === signer.toLowerCase(); } catch { return false; }
 }
 
-// Registrar transactions are sent strictly one at a time so nonces never collide.
+// Registrar transactions are sent strictly one at a time with a locally tracked nonce, so
+// they never collide (providers may cache the account's transaction count).
 let queue = Promise.resolve();
+let nextNonce = null;
 function send(label, fn) {
   const run = async () => {
     try {
-      const txr = await fn();
+      nextNonce ??= await provider.getTransactionCount(registrar.address, 'pending');
+      const txr = await fn({ nonce: nextNonce });
+      nextNonce++;
       const receipt = await txr.wait();
       return { hash: receipt.hash, receipt };
     } catch (e) {
+      nextNonce = null; // resynchronise from the chain on the next send
+      if (process.env.CHAIN_DEBUG) console.error(e);
       const name = e.revert?.name || e.info?.error?.data?.reason || null;
       throw Object.assign(new Error(`On-chain ${label} was rejected${name ? ` (${name})` : ''}: ${FRIENDLY[name] || e.shortMessage || e.message}`), { status: 400 });
     }
@@ -136,7 +142,7 @@ function send(label, fn) {
   return p;
 }
 const FRIENDLY = {
-  NotCitizen: 'both parties must be active citizens', BadSignature: 'the Sigil wallet signature is not valid',
+  NotCitizen: 'both parties must be active citizens', BadSignature: 'the Aurum wallet signature is not valid',
   BadNonce: 'this payment was already used or is out of order — try again', Expired: 'the signed payment expired — try again',
   NotOwner: 'a Sigil is not owned by the payer', ValueMismatch: 'the Sigils are not worth exactly the amount', NotAllowed: 'not permitted by the Sigil contract',
 };
@@ -145,27 +151,27 @@ const events = (receipt, name) => receipt.logs.map((l) => { try { return contrac
 
 export async function registerCitizen(id, address) {
   const c = await contract.citizens(id);
-  if (c.signer === '0x0000000000000000000000000000000000000000') return send('registration', () => contract.register(id, address));
-  if (c.signer.toLowerCase() !== address.toLowerCase()) return send('key change', () => contract.setSigner(id, address));
+  if (c.signer === '0x0000000000000000000000000000000000000000') return send('registration', (o) => contract.register(id, address, o));
+  if (c.signer.toLowerCase() !== address.toLowerCase()) return send('key change', (o) => contract.setSigner(id, address, o));
   return null;
 }
-export const setActive = (id, active) => send(active ? 'reinstatement' : 'suspension', () => contract.setActive(id, active));
+export const setActive = (id, active) => send(active ? 'reinstatement' : 'suspension', (o) => contract.setActive(id, active, o));
 
 export async function grant(id) {
-  const { hash, receipt } = await send('citizenship grant', () => contract.grant(id));
+  const { hash, receipt } = await send('citizenship grant', (o) => contract.grant(id, o));
   const e = events(receipt, 'Minted')[0];
   return { hash, first: Number(e.args.firstSerial), count: Number(e.args.count), value: Number(e.args.value) };
 }
 
 export async function transfer(message, sig, serials, breaks) {
-  const { hash, receipt } = await send('payment', () => contract.transfer(message, sig, serials, breaks));
+  const { hash, receipt } = await send('payment', (o) => contract.transfer(message, sig, serials, breaks, o));
   return { hash, minted: events(receipt, 'Minted').map((e) => ({ first: Number(e.args.firstSerial), count: Number(e.args.count) })) };
 }
 export async function exchange(message, sig, change, mintCommons) {
-  const { hash, receipt } = await send('Mint exchange', () => contract.exchange(message, sig, change, mintCommons));
+  const { hash, receipt } = await send('Mint exchange', (o) => contract.exchange(message, sig, change, mintCommons, o));
   return { hash, minted: events(receipt, 'Minted').map((e) => ({ first: Number(e.args.firstSerial), count: Number(e.args.count) })) };
 }
-export const releaseEscrow = (to, serials, ref) => send('escrow release', () => contract.releaseEscrow(to, serials, ref));
+export const releaseEscrow = (to, serials, ref) => send('escrow release', (o) => contract.releaseEscrow(to, serials, ref, o));
 
 export const nonceOf = async (id) => Number(await contract.nonces(id));
 export const nextSerial = async () => Number(await contract.nextSerial());

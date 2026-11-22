@@ -86,7 +86,7 @@ export function requireAccess(op, paramsOf) {
       await new Promise((ok, fail) => requireCitizen(req, res, (e) => (e ? fail(e) : ok())));
       const auth = req.body?.auth;
       if (!auth?.challenge || !auth?.signature) throw forbidden('This action requires your .access key.', { need: 'access', op });
-      rateLimit(`access:${req.user.id}`, 12, 10 * 60e3);
+      rateLimit(`access:${req.user.id}`, 30, 10 * 60e3);
       const params = paramsOf(req) || {};
       const problem = checkChallenge(auth.challenge, req.user.id, op, params);
       if (problem) throw forbidden(problem, { need: 'access', op });

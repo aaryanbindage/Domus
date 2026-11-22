@@ -191,7 +191,7 @@ r.post('/passport/issue', requireAuth, h(async (req, res) => {
   if (!validatePublicKey(pk)) throw bad('Invalid public key');
   // The Sigil wallet key is derived from the same .access key; the browser proves it holds it.
   const chainAddress = String(req.body.chainAddress || '');
-  if (!/^0x[0-9a-fA-F]{40}$/.test(chainAddress) || !verifyLink(u.username, keyId(pk), chainAddress, String(req.body.chainProof || ''))) throw bad('Invalid Domus wallet proof');
+  if (!/^0x[0-9a-fA-F]{40}$/.test(chainAddress) || !verifyLink(u.username, keyId(pk), chainAddress, String(req.body.chainProof || ''))) throw bad('Invalid Aurum wallet proof');
   await registerWallet(u.id, chainAddress);
   const result = tx(() => {
     const passportNo = u.passport_no || newPassportNumber();

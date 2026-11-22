@@ -39,7 +39,11 @@ app.use(loadSession);
 // Read-only and safe for other origins' tools, so it sits before the CSRF guard.
 app.post('/api/chain/rpc', async (req, res) => {
   try { res.json({ jsonrpc: '2.0', id: req.body?.id ?? null, result: await chain.rpc(String(req.body?.method), req.body?.params || []) }); }
-  catch (e) { res.status(e.status || 500).json({ jsonrpc: '2.0', id: req.body?.id ?? null, error: { code: -32000, message: e.message } }); }
+  catch (e) {
+    // JSON-RPC errors (such as a reverted eth_call) are answered normally, with the revert data, so tools can decode them.
+    const data = typeof e.data === 'string' ? e.data : e.data?.result;
+    res.status(e.status === 400 ? 400 : 200).json({ jsonrpc: '2.0', id: req.body?.id ?? null, error: { code: e.code ?? -32000, message: e.message, ...(data && { data }) } });
+  }
 });
 app.get('/api/chain', (_req, res) => res.json(chain.chainInfo()));
 app.use('/api', csrf);

@@ -42,13 +42,22 @@ export async function ledger(view, _p, query) {
   const d = await api.get(`/api/gov/records/ledger${qs({ page })}`);
   mount(view, html`${crumbs('Ledger')}
   <div class="page-head row between"><div><h1>Public ledger</h1><p>${num(d.total)} entries. Each entry contains the hash of the one before it and is signed by the Treasury. Citizen transfers also carry the sender’s .access-key signature.</p></div>
-    <button class="btn primary" data-verify>${icon('shield')} Verify entire chain</button></div>
+    <div class="row"><button class="btn" data-onchain>${icon('ledger')} Compare with the blockchain</button><button class="btn primary" data-verify>${icon('shield')} Verify entire chain</button></div></div>
   <div data-result></div>
   <div class="card table-wrap"><table class="table"><thead><tr><th>#</th><th>Type</th><th>From → To</th><th class="right">Amount</th><th>Memo</th><th>Hash</th><th>When</th></tr></thead><tbody>
     ${d.items.map((t) => html`<tr><td><a href="#/records/ledger/${t.id}">${t.id}</a></td><td>${txBadge(t.type)}${t.signed ? html` <span title="Signed by sender's .access key">${icon('key')}</span>` : ''}</td>
       <td class="small nowrap">${party(t.from)} → ${party(t.to)}</td>
       <td class="right">${num(t.amount)}</td><td class="small muted">${t.memo}</td><td class="hash">${t.hash.slice(0, 12)}…</td><td class="small nowrap">${ago(t.ts)}</td></tr>`)}</tbody></table></div>
   ${pager(d.page, d.pages, (p) => `#/records/ledger?page=${p}`)}`);
+  view.querySelector('[data-onchain]').onclick = async (e) => {
+    e.target.disabled = true;
+    const r = await api.get('/api/gov/records/chain');
+    e.target.disabled = false;
+    mount(view.querySelector('[data-result]'), html`<div class="callout ${r.ok ? 'ok' : 'bad'}" style="margin-bottom:16px">${icon(r.ok ? 'check' : 'alert')}<div>
+      <b>${r.ok ? `All ${num(r.sigils)} Sigils have the same owner on the blockchain as in this ledger` : 'The ledger and the blockchain disagree'}</b>
+      <div class="small">Read from the Sigil contract <span class="mono">${r.contract}</span> on ${r.network} (chain ${r.chainId}). Anyone can query it through <span class="mono">/api/chain/rpc</span>.</div>
+      ${r.mismatches.length ? html`<ul class="small">${r.mismatches.map((m) => html`<li>${m.issue || `Sigil #${m.serial}: ledger says ${m.ledger}, chain says ${m.chain}`}</li>`)}</ul>` : ''}</div></div>`);
+  };
   view.querySelector('[data-verify]').onclick = async (e) => {
     e.target.disabled = true;
     const r = await api.get('/api/gov/records/ledger/verify');
@@ -66,7 +75,7 @@ export async function ledgerEntry(view, { id }) {
   mount(view, html`${crumbs(html`<a href="#/records/ledger">Ledger</a>`, `Entry #${t.id}`)}
   <h1>Ledger entry #${t.id}</h1>
   <div class="split"><div class="stack">
-    <div class="card pad">${describe([['Type', txBadge(t.type)], ['Time', fmtDateTime(t.ts)], ['From', t.from ? userLink(t.from) : 'Treasury'], ['To', t.to ? userLink(t.to) : 'Treasury reserve'], ['Value', html`<b>${num(t.amount)}</b> ${nation().currency.symbol}`], ['Memo', t.memo || '—'], ['Reference', t.ref || '—']])}</div>
+    <div class="card pad">${describe([['Type', txBadge(t.type)], ['Time', fmtDateTime(t.ts)], ['From', t.from ? userLink(t.from) : 'Treasury'], ['To', t.to ? userLink(t.to) : 'Treasury reserve'], ['Value', html`<b>${num(t.amount)}</b> ${nation().currency.symbol}`], ['Memo', t.memo || '—'], ['Reference', t.ref || '—'], ['Blockchain transaction', t.chain_tx ? html`${t.chain?.explorer ? html`<a class="mono small" href="${t.chain.explorer}/tx/${t.chain_tx}" target="_blank" rel="noopener">${t.chain_tx}</a>` : html`<span class="mono small" style="word-break:break-all">${t.chain_tx}</span>`}<div class="tiny muted">${t.chain?.network} · chain ${t.chain?.chainId}</div>` : '—']])}</div>
     <div class="card pad stack tight"><h4 style="margin:0">Cryptographic proof</h4>${describe([
       ['Entry hash', html`<span class="hash break">${t.hash}</span>`], ['Previous hash', html`<span class="hash break">${t.prev_hash}</span>`],
       ['Treasury signature', html`<span class="hash break">${t.server_sig}</span>`],

@@ -11,13 +11,13 @@ export async function wallet(view, _p, query) {
   const rarity = query.get('rarity') || '';
   const page = Number(query.get('page') || 1);
   const hpage = Number(query.get('h') || 1);
-  const [w, tokens, hist] = await Promise.all([api.get('/api/wallet'), api.get(`/api/wallet/tokens${qs({ rarity, page })}`), api.get(`/api/wallet/history?page=${hpage}`)]);
+  const [w, tokens, hist, d] = await Promise.all([api.get('/api/wallet'), api.get(`/api/wallet/tokens${qs({ rarity, page })}`), api.get(`/api/wallet/history?page=${hpage}`), api.get('/api/wallet/chain')]);
   const c = nation().currency;
   const me = user();
   const vals = Object.fromEntries(w.rarities.map((r) => [r.id, r.value]));
   const totalTokens = Object.values(w.byRarity).reduce((a, b) => a + b, 0);
   mount(view, html`<nav class="crumbs"><a href="#/">Home</a><span>Wallet</span></nav>
-  <div class="page-head row between"><div><span class="eyebrow">Treasury &amp; Mint</span><h1>My wallet</h1></div>
+  <div class="page-head row between"><div><span class="eyebrow">Aurum wallet · on-chain</span><h1>My wallet</h1></div>
     <div class="row"><a class="btn primary" href="#/wallet/send">${icon('send')} Send ${c.plural}</a><a class="btn" href="#/records/ledger">${icon('ledger')} Public ledger</a></div></div>
   <div class="grid g4">
     <div class="card stat" style="grid-column:span 2;background:linear-gradient(135deg,var(--navy),#1d4e89);color:#fff;border:0"><span style="color:#c9d6ea">Available balance</span><b style="font-size:2.4rem">${num(w.available)} <span style="font-size:1rem;color:var(--gold)">${c.symbol}</span></b><span style="color:#c9d6ea">${num(totalTokens)} Sigils held · ${num(w.inEscrow)} ${c.symbol} in marketplace escrow</span></div>
@@ -26,6 +26,11 @@ export async function wallet(view, _p, query) {
   <div class="card table-wrap" style="margin-top:18px"><table class="table"><thead><tr><th>Rarity</th><th class="right">Face value</th><th class="right">Odds at minting</th><th class="right">You hold</th><th class="right">Worth</th></tr></thead><tbody>
     ${w.rarities.map((r) => html`<tr><td><div class="row tight" style="flex-wrap:nowrap"><span style="width:26px;display:inline-block">${sigilArt(ORDER.indexOf(r.id) + 2, r.id)}</span>${rarityLabel(r.id)}</div></td><td class="right money">${r.value}</td><td class="right muted">${r.odds >= 1 ? 'the rest' : `1 in ${Math.round(1 / r.odds)}`}</td><td class="right">${num(w.byRarity[r.id] || 0)}</td><td class="right money">${num((w.byRarity[r.id] || 0) * r.value)}</td></tr>`)}
   </tbody></table></div>
+
+  <div class="card pad" style="margin-top:18px"><div class="row between"><div class="row"><span class="dept-icon">${icon('key')}</span><div><b>Aurum wallet</b><div class="small muted">Built in — no app or crypto wallet to install. It opens with your .access key, and the Treasury pays the network fees.</div></div></div>
+    ${d.onChain.value === w.available + w.inEscrow ? html`<span class="badge ok">${icon('check')} Matches the chain</span>` : html`<span class="badge warn">Syncing with the chain</span>`}</div>
+    ${describe([['Wallet address', html`<span class="mono small">${d.address || 'not linked'}</span>`], ['Citizen account on-chain', html`#${d.citizenId} · ${d.citizen.active ? 'active citizen' : 'suspended'}`], ['On-chain balance', html`<b>${num(d.onChain.value)} ${c.symbol}</b> in ${num(d.onChain.count)} Sigils (including escrow)`], ['Network', `${d.network} · chain ${d.chainId}`], ['Sigil contract', html`<span class="mono small">${d.contract}</span>`], ['Payments signed', num(d.nonce)]])}
+    <p class="tiny muted" style="margin:8px 0 0">Sigils can only be held by verified citizens, so they can't be listed on crypto exchanges and have no cash value. <a href="#/records/treasury">Audit the chain</a></p></div>
 
   <div class="split" style="margin-top:18px">
     <div class="card"><div class="card-head"><h3>My collection</h3><span class="small muted">${num(tokens.total)} Sigils · click one to break it into change at the Mint</span></div>
@@ -44,7 +49,13 @@ export async function wallet(view, _p, query) {
   view.querySelectorAll('[data-break]').forEach((el) => el.onclick = async () => {
     const v = vals[el.dataset.rarity];
     if (!(await confirmBox(`Break Sigil #${el.dataset.break} at the Mint?`, `This ${el.dataset.rarity} Sigil (${v} ${c.symbol}) goes into the Treasury reserve and you receive ${v} ${c.symbol} of smaller Sigils as change. Your balance stays the same, but you give up this collectible.`, { okLabel: 'Break into change' }))) return;
-    try { const r = await api.post('/api/wallet/break', { serial: Number(el.dataset.break) }); toast(`Received ${r.change} Sigils worth ${r.value} ${c.symbol}`, 'ok'); wallet(view, _p, query); } catch (e) { toast(e.message, 'bad'); }
+    const params = { serial: Number(el.dataset.break) };
+    const r = await accessOp({
+      op: 'wallet.break', params, title: `Break Sigil #${params.serial}`,
+      summary: describe([['Sigil', `#${params.serial} (${el.dataset.rarity})`], ['Change', html`<b>${v} ${c.symbol}</b> of smaller Sigils`]]),
+      submit: (auth) => api.post('/api/wallet/break', { params, auth }),
+    });
+    if (r) { toast(`Received ${r.change} Sigils worth ${r.value} ${c.symbol}`, 'ok'); wallet(view, _p, query); }
   });
 }
 

@@ -6,9 +6,9 @@ import { api, ApiError, setPassportPrompt } from './api.js';
 import { html, mount, modal, icon, toast, esc, until } from './ui.js';
 import { state, refreshMe, user } from './store.js';
 import { unlockAccessFile, signChallenge, ITERATIONS } from './accesskey.js';
-import { domusWallet, signIntent } from './domus.js';
+import { aurumWallet, signIntent } from './aurum.js';
 
-// Operations that move Sigils on-chain, and so also need a Domus wallet signature.
+// Operations that move Sigils on-chain, and so also need a Aurum wallet signature.
 const PAYMENTS = new Set(['wallet.send', 'wallet.break', 'market.buy']);
 
 let rememberedKey = null; // { name, text } — the encrypted file only, never the decrypted key
@@ -111,13 +111,13 @@ export function accessOp({ op, params, title, summary, submit }) {
         if (u?.keyId && headers['Key-Id'] !== u.keyId) throw new Error(`This key (${headers['Key-Id']}) is not the current key for your passport (${u.keyId}). It may have been replaced by a reissue.`);
         let chain = null;
         if (PAYMENTS.has(op)) {
-          const w = domusWallet(pkcs8);
-          if (u?.chainAddress && w.address.toLowerCase() !== u.chainAddress.toLowerCase()) throw new Error('This .access key does not open your Domus wallet');
+          const w = aurumWallet(pkcs8);
+          if (u?.chainAddress && w.address.toLowerCase() !== u.chainAddress.toLowerCase()) throw new Error('This .access key does not open your Aurum wallet');
           const it = await api.post('/api/wallet/chain/intent', { op, params });
           if (Number(it.message.from) !== u.id) throw new Error('The payment to sign is not from your account');
-          log(`Domus wallet ${w.address.slice(0, 10)}… signing on-chain ${it.primaryType === 'Exchange' ? `Mint exchange of Sigil #${it.message.serial}` : `payment of ${it.message.amount} ${state.me?.nation?.currency?.symbol || ''}`} (nonce ${it.message.nonce}, chain ${it.domain.chainId})…`);
+          log(`Aurum wallet ${w.address.slice(0, 10)}… signing on-chain ${it.primaryType === 'Exchange' ? `Mint exchange of Sigil #${it.message.serial}` : `payment of ${it.message.amount} ${state.me?.nation?.currency?.symbol || ''}`} (nonce ${it.message.nonce}, chain ${it.domain.chainId})…`);
           chain = { nonce: it.message.nonce, deadline: it.message.deadline, sig: await signIntent(w, it) };
-          log('Signed with your Domus wallet key (EIP-712, secp256k1) ✓', 'ok');
+          log('Signed with your Aurum wallet key (EIP-712, secp256k1) ✓', 'ok');
         }
         const ch = await api.post('/api/secure/challenge', { op, params });
         log(`Server challenge issued under rotating key epoch ${ch.epoch} (fingerprint ${ch.epochInfo.fingerprint}), valid ${until(ch.expiresAt)}`);

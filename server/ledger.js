@@ -69,7 +69,7 @@ export function serialized(fn) {
   return p;
 }
 
-/** Register (or re-key) a citizen's Sigil wallet on-chain. */
+/** Register (or re-key) a citizen's Aurum wallet on-chain. */
 export const registerWallet = (userId, address) => serialized(() => chain.registerCitizen(userId, address));
 export const setCitizenActive = (userId, active) => serialized(() => chain.setActive(userId, active));
 
@@ -210,10 +210,10 @@ export async function newIntent(userId, op, params) {
   return { domain: chain.chainInfo().domain, types: { [primaryType]: chain.TYPES[primaryType] }, primaryType, message };
 }
 function checkSigned(user, op, params, signed) {
-  if (!signed?.sig) throw fail('This payment must be signed with your Sigil wallet (from your .access key)');
-  if (!user.chain_address) throw fail('Your Sigil wallet is not linked yet — open your wallet to link it');
+  if (!signed?.sig) throw fail('This payment must be signed with your Aurum wallet (from your .access key)');
+  if (!user.chain_address) throw fail('Your Aurum wallet is not linked yet');
   const it = intentFor(user.id, op, params, signed);
-  if (!chain.verifyIntent(it.primaryType, it.message, signed.sig, user.chain_address)) throw fail('The Sigil wallet signature does not match this payment');
+  if (!chain.verifyIntent(it.primaryType, it.message, signed.sig, user.chain_address)) throw fail('The Aurum wallet signature does not match this payment');
   return it;
 }
 

@@ -16,6 +16,10 @@ TARBALL="$(pwd)/domus.tar.gz"
 [ -f "$TARBALL" ] || { echo "domus.tar.gz not found in $(pwd)"; exit 1; }
 
 DOMAIN="${1:-}"
+# Updating without a domain keeps the one already in use.
+if [ -z "$DOMAIN" ] && [ -f "$ENV_FILE" ]; then
+  DOMAIN="$(sed -n 's#^PUBLIC_URL=https://##p' "$ENV_FILE")"
+fi
 if [ -z "$DOMAIN" ]; then
   IP="$(curl -fsS4 https://ifconfig.me)"
   DOMAIN="${IP//./-}.sslip.io"

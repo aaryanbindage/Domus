@@ -30,7 +30,7 @@ export async function join(view) {
       <label class="field"><span>Display name</span><input class="input" name="displayName" required minlength="2" maxlength="40"></label>
       <label class="field"><span>Email</span><input class="input" name="email" type="email" required autocomplete="email"></label>
       <label class="field"><span>Password</span><input class="input" name="password" type="password" required minlength="10" autocomplete="new-password"><small>At least 10 characters with letters and numbers/symbols. It also encrypts your .access key — don’t forget it.</small></label>
-      <label class="check"><input type="checkbox" required> I am a real person applying for my only account, and I accept the <a href="#/laws">Constitution</a> and the Citizenship and Identity Act.</label>
+      <label class="check"><input type="checkbox" required> <span>I am a real person applying for my only account, and I accept the <a href="#/laws">Constitution</a> and the Citizenship and Identity Act.</span></label>
       <button class="btn primary block lg" type="submit">Create account</button>
       <p class="small muted center" style="margin:0">Already registered? <a href="#/login">Sign in</a></p>
     </form>

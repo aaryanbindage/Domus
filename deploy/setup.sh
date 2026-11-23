@@ -66,7 +66,8 @@ HOST=127.0.0.1
 PORT=3000
 DATA_DIR=$DATA
 PUBLIC_URL=https://$DOMAIN
-# Real email for verification codes, e.g. a Gmail app password:
+# Real email for verification codes: GMAIL_* lines from `npm run gmail-oauth` (see DEPLOY.md),
+# or an SMTP server, e.g. a Gmail app password:
 # SMTP_URL=smtps://you%40gmail.com:app-password@smtp.gmail.com:465
 # MAIL_FROM=Domus <you@gmail.com>
 CONF

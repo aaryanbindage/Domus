@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'node:path';
 import { ROOT, PORT, DEV, NATION, PUBLIC_URL } from './config.js';
 import './db.js';
-import { mailConfigured } from './mail.js';
+import { mailConfigured, verifyMail } from './mail.js';
 import { seed, syncLaws } from './seed.js';
 import { loadSession, csrf } from './auth.js';
 import account, { secure } from './routes/account.js';
@@ -72,5 +72,6 @@ app.use((err, req, res, _next) => {
 
 const info = await chain.init();
 console.log(`[chain] Sigil contract ${info.contract} on ${info.network} (chain ${info.chainId}); Treasury relayer ${info.registrar}`);
-if (!DEV && !mailConfigured) console.warn('[mail] SMTP_URL is not set: verification codes are only written to this log, so applicants cannot receive them');
+if (!DEV && !mailConfigured) console.warn('[mail] no mail settings (GMAIL_* or SMTP_URL): verification codes are only written to this log, so applicants cannot receive them');
+if (mailConfigured) verifyMail().then(() => console.log('[mail] mail server login OK'), (e) => console.error(`[mail] mail server login FAILED: ${e.message}`));
 app.listen(PORT, process.env.HOST || undefined, () => console.log(`${NATION.name} is online at ${PUBLIC_URL}${DEV ? '  (development mode: email codes print here)' : ''}`));

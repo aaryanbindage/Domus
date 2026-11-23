@@ -60,6 +60,29 @@ MAIL_FROM=Domus <you@gmail.com>
 
 5. Restart Domus with `sudo systemctl restart domus`.
 
+### If Gmail refuses the app password: use OAuth
+
+Google sometimes rejects app passwords with "Username and Password not accepted". OAuth avoids app passwords entirely.
+
+1. Go to <https://console.cloud.google.com/>, signed in as the Gmail account Domus should send from, and create a project such as `Domus`.
+2. Go to **APIs & Services → Library**, search for **Gmail API**, and click **Enable**.
+3. Go to **APIs & Services → OAuth consent screen** (also labelled **Google Auth Platform**).
+   - Choose **External**.
+   - App name: `Domus`.
+   - Enter your email as the support and developer contact.
+   - Save.
+4. Under **Audience**, click **Publish app** so the app is *In production*.
+   - In *Testing* mode Google expires the authorisation after 7 days.
+   - Google shows a warning that the app is unverified. That's fine for your own account.
+5. Go to **Credentials → Create credentials → OAuth client ID** and choose **Desktop app**. Copy the **Client ID** and **Client secret**.
+6. On your PC, in this folder, run:
+   ```powershell
+   npm run gmail-oauth -- CLIENT_ID CLIENT_SECRET
+   ```
+   - A Google page opens. Sign in, click **Advanced → Go to Domus (unsafe)** (it's your own app), and allow access.
+   - The command prints four `GMAIL_…` lines.
+7. Put those four lines in `/etc/domus.env` on the server and restart Domus. Delete or comment out any `SMTP_URL` line. The log then shows `[mail] mail server login OK`.
+
 ## 4. Become the founding Head of State
 
 Sign up on the live site and submit your ID and selfie. Then, on the server, run:

@@ -65,7 +65,8 @@ npm start                 # http://localhost:3000
 | `BILL_SIGNATURES`, `BILL_VOTING_DAYS` | `3`, `7` |
 | `NODE_ENV=production` | hides dev email codes |
 | `HOST` | all interfaces (set `127.0.0.1` behind a reverse proxy) |
-| `SMTP_URL`, `MAIL_FROM` | unset: email codes are only logged |
+| `GMAIL_USER`, `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` | Gmail via OAuth (`npm run gmail-oauth`) |
+| `SMTP_URL`, `MAIL_FROM` | any SMTP server; with neither, email codes are only logged |
 
 `data/server-keys.json` holds the rotating-key master secret, the document-HMAC pepper and the Ed25519 passport and ledger signing key. Back it up and keep it secret.
 

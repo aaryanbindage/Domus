@@ -10,6 +10,7 @@
     "dev": "node --no-warnings=ExperimentalWarning --watch server/index.js",
     "make-admin": "node --no-warnings=ExperimentalWarning scripts/make-admin.js",
     "compile-contract": "node scripts/compile-contract.js",
+    "gmail-oauth": "node scripts/gmail-oauth.js",
     "test": "node --no-warnings=ExperimentalWarning scripts/smoke-test.js"
   },
   "engines": {

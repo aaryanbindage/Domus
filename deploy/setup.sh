@@ -67,6 +67,9 @@ PUBLIC_URL=https://$DOMAIN
 # MAIL_FROM=Domus <you@gmail.com>
 CONF
   chmod 600 "$ENV_FILE"
+else
+  # Keep the settings, but follow a change of domain.
+  sed -i "s#^PUBLIC_URL=.*#PUBLIC_URL=https://$DOMAIN#" "$ENV_FILE"
 fi
 
 echo "==> Service"

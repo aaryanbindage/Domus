@@ -103,7 +103,10 @@ UNIT
 # `sudo domus-admin <username> --approve` makes the founding Head of State.
 cat > /usr/local/bin/domus-admin <<'ADMIN'
 #!/usr/bin/env bash
-set -a; . /etc/domus.env; set +a
+# Read the settings the way systemd does (values may contain spaces and <>).
+while IFS='=' read -r key value; do
+  [[ $key =~ ^[A-Z_]+$ ]] && export "$key=$value"
+done < /etc/domus.env
 cd /opt/domus && exec sudo -E -u domus node --no-warnings=ExperimentalWarning scripts/make-admin.js "$@"
 ADMIN
 chmod 755 /usr/local/bin/domus-admin

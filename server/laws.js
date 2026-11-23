@@ -33,7 +33,7 @@ const CONSTITUTION = `# Constitution of ${N.name}
 4. This Constitution is the supreme law. Any Act, Regulation or Order inconsistent with it is void to the extent of the inconsistency.
 
 ## Article II — Citizenship
-1. Citizenship is open to any natural person aged 13 or older who proves their identity to the Department of Citizenship & Identity.
+1. Citizenship is open to any natural person who proves their identity to the Department of Citizenship & Identity. A person under 13 also needs the consent of a parent or guardian under the Minors Protection Act.
 2. **One person, one citizenship.** No person may hold more than one account. An identity document may back only one citizen, forever.
 3. Every citizen is issued a digital passport and a personal **.access key**. The key is the citizen's alone; the State never holds it.
 4. Citizenship may be suspended or revoked only under law, and every suspension is published in the Official Gazette.
@@ -102,8 +102,13 @@ export function buildLaws() {
       ['State duties', 'The State shall never request, receive or store a citizen\'s private key. Any official who asks a citizen for their .access file or password commits misconduct.'],
       ['Presumption', 'An action recorded with a valid signature is presumed authorised by the citizen unless they show it was made after they reported the key lost.'],
     ]),
-    act('Minors Protection Act', CIT, 'citizenship', 'Additional protections for citizens aged 13 to 17.', [
+    act('Minors Protection Act', CIT, 'citizenship', 'Additional protections for citizens under 18, and parental consent for children under 13.', [
       ['Scope', 'This Act protects every citizen under 18 years of age ("young citizen").'],
+      ['Children under 13', `1. An applicant under 13 may become a citizen only with the consent of a parent or guardian.
+2. The applicant names the parent or guardian and their own email address. The Department emails them a link explaining what citizenship involves, and they give or refuse consent there.
+3. No registrar may approve the application before consent is given. If consent is refused, the application is closed and the identity document and selfie are deleted.`],
+      ['Guardian rights', `A parent or guardian of a citizen under 13 may at any time ask the Department to show them the personal information held about the child, to correct it, or to withdraw consent. On withdrawal the account is closed and the identity document and selfie are deleted.`],
+      ['Data minimisation', `From a child under 13 the State collects only what is needed to verify a real, unique person, and never publishes it.`],
       ['Contact', 'No person may solicit personal information, images or off-platform contact from a young citizen. Doing so is an aggravating factor under the Criminal Code.'],
       ['Commerce', 'Listings of age-restricted goods may not be sold to young citizens. Sellers of such goods must refuse or refund orders from them.'],
       ['Records', 'A young citizen\'s date of birth is never published, consistent with the Data Protection Act.'],

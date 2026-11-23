@@ -93,11 +93,20 @@ export async function apply(view) {
   if (u.status === 'approved' || u.status === 'citizen') return go('/passport');
   const { application } = await api.get('/api/account/application');
   if (u.status === 'review') {
-    return mount(view, narrow(html`${steps('review')}<div class="card pad-lg center" style="padding:36px">
+    mount(view, narrow(html`${steps('review')}<div class="card pad-lg center" style="padding:36px">
       <span class="dept-icon" style="margin:0 auto 14px;width:56px;height:56px">${icon('eye')}</span>
       <h2>Your application is under review</h2>
+      ${application?.guardian_email && !application.guardian_consent_at ? html`<div class="callout warn" style="text-align:left;margin:14px 0">${icon('alert')}<div><b>Waiting for your parent or guardian.</b> We emailed ${application.guardian_name} at ${application.guardian_email}. A registrar can only approve you after they open the link and agree.<div style="margin-top:8px"><button type="button" class="btn sm" data-resend-guardian>Send the email again</button></div></div></div>` : ''}
       <p class="muted">Submitted ${fmtDateTime(application?.created_at)}. A registrar at the Department of Citizenship & Identity will compare your document and live selfie, and check that you do not already hold citizenship. You'll see the result here.</p>
       <div class="row" style="justify-content:center"><a class="btn" href="#/forum/c/help">Ask the Help Desk</a><a class="btn" href="#/laws">Read the Constitution meanwhile</a></div></div>`));
+    const resend = view.querySelector('[data-resend-guardian]');
+    if (resend) {
+      resend.onclick = async () => {
+        resend.disabled = true;
+        try { await api.post('/api/account/guardian/resend', {}); toast('Email sent again', 'ok'); } catch (e) { toast(e.message, 'bad'); resend.disabled = false; }
+      };
+    }
+    return;
   }
   if (u.status === 'banned') return mount(view, narrow(html`<div class="callout bad">${icon('alert')}<div><b>Application refused permanently.</b><p>${application?.review_note || ''}</p></div></div>`));
 
@@ -112,12 +121,18 @@ export async function apply(view) {
       <div class="grid g2">
         <label class="field"><span>Date of birth</span><input class="input" type="date" name="dob" required max="${new Date().toISOString().slice(0, 10)}"></label>
         <label class="field"><span>Document issued by (country)</span><input class="input" name="country" required maxlength="56" placeholder="e.g. United States"></label>
-        <label class="field"><span>Document type</span><select class="input" name="docType"><option value="passport">Passport</option><option value="national_id">National ID card</option><option value="drivers_license">Driver’s licence</option></select></label>
+        <label class="field"><span>Document type</span><select class="input" name="docType"><option value="passport">Passport</option><option value="national_id">National ID card</option><option value="drivers_license">Driver’s licence</option><option value="student_id">School or student ID</option><option value="birth_certificate">Birth certificate</option></select></label>
         <label class="field"><span>Document number</span><input class="input" name="docNumber" required minlength="4" maxlength="30" autocomplete="off"><small>Stored only as a one-way fingerprint plus its last 4 characters.</small></label>
-      </div></div></div>
+      </div>
+      <div class="stack tight hide" data-guardian>
+        <div class="callout warn small">${icon('alert')}<div><b>You're under 13</b>, so a parent or guardian has to agree before you can become a citizen. We'll email them a link explaining what joining means.</div></div>
+        <div class="grid g2">
+          <label class="field"><span>Parent or guardian's name</span><input class="input" name="guardianName" maxlength="100"></label>
+          <label class="field"><span>Parent or guardian's email</span><input class="input" type="email" name="guardianEmail" maxlength="200"><small>Their own email, not yours.</small></label>
+        </div></div></div></div>
 
     <div class="card"><div class="card-head"><h3>2 · Photo of your document</h3></div><div class="pad stack tight">
-      <label class="dropzone" data-docdrop>${icon('file')}<strong>Upload a clear photo of the page with your photo</strong><span class="small">JPEG, PNG or WebP · max 8 MB</span><input type="file" name="document" accept="image/jpeg,image/png,image/webp" hidden></label>
+      <label class="dropzone" data-docdrop>${icon('file')}<strong>Upload a clear photo of your document</strong><span class="small">The page with your photo, if it has one</span><span class="small">JPEG, PNG or WebP · max 8 MB</span><input type="file" name="document" accept="image/jpeg,image/png,image/webp" hidden></label>
       <img class="preview-img hide" data-docprev alt="Document preview"></div></div>
 
     <div class="card"><div class="card-head"><h3>3 · Live selfie</h3><span class="badge warn">Liveness check</span></div><div class="pad stack">
@@ -141,6 +156,13 @@ export async function apply(view) {
   </form>`));
 
   const form = view.querySelector('[data-form]');
+  const guardianBox = view.querySelector('[data-guardian]');
+  form.dob.oninput = () => {
+    const age = (Date.now() - Date.parse(form.dob.value)) / (365.25 * 864e5);
+    const child = age > 0 && age < 13;
+    guardianBox.classList.toggle('hide', !child);
+    form.guardianName.required = form.guardianEmail.required = child;
+  };
   const docInput = form.querySelector('input[name=document]');
   const docDrop = view.querySelector('[data-docdrop]');
   docInput.onchange = () => {
@@ -188,9 +210,10 @@ export async function apply(view) {
     fd.set('selfie', selfie, 'selfie.jpg');
     fd.set('liveCapture', live ? '1' : '0');
     if (dhash) fd.set('dhash', dhash);
-    await api.post('/api/account/application', fd);
+    const res = await api.post('/api/account/application', fd);
     await refreshMe();
-    toast('Application submitted', 'ok');
+    if (res.guardianEmailed === false) toast('Application submitted, but the email to your parent or guardian failed. Send it again from the next page.', 'bad');
+    else toast('Application submitted', 'ok');
     apply(view);
   });
 }

@@ -40,7 +40,7 @@ r.get('/applications/:id', reviewerOnly, (req, res) => {
   const a = q.get('SELECT a.*, u.username, u.email, u.display_name, u.created_at user_created FROM applications a JOIN users u ON u.id = a.user_id WHERE a.id = ?', Number(req.params.id));
   if (!a) throw notFound();
   const history = q.all('SELECT id, status, review_note, created_at FROM applications WHERE user_id = ? AND id != ? ORDER BY id DESC', a.user_id, a.id);
-  res.json({ ...a, flags: JSON.parse(a.flags), doc_hmac: undefined, person_hmac: undefined, ip_hmac: undefined, history, reviewer: a.reviewer_id ? q.get('SELECT username FROM users WHERE id = ?', a.reviewer_id)?.username : null });
+  res.json({ ...a, flags: JSON.parse(a.flags), guardian_token: undefined, doc_hmac: undefined, person_hmac: undefined, ip_hmac: undefined, history, reviewer: a.reviewer_id ? q.get('SELECT username FROM users WHERE id = ?', a.reviewer_id)?.username : null });
 });
 r.get('/applications/:id/:which(document|selfie)', reviewerOnly, (req, res) => {
   const a = q.get('SELECT doc_image, selfie_image FROM applications WHERE id = ?', Number(req.params.id));
@@ -58,6 +58,7 @@ r.post('/applications/:id/decide', reviewerOnly, requirePassport, (req, res) => 
   const decision = oneOf(req.body.decision, 'Decision', ['approve', 'reject', 'ban']);
   const note = str(req.body.note, 'Note to applicant', { max: 1000, optional: true });
   if (decision !== 'approve' && note.length < 5) throw bad('Explain the decision to the applicant');
+  if (decision === 'approve' && a.guardian_email && !a.guardian_consent_at) throw bad('This applicant is under 13: wait until their parent or guardian has consented by email');
   tx(() => {
     const appStatus = { approve: 'approved', reject: 'rejected', ban: 'banned' }[decision];
     q.run('UPDATE applications SET status = ?, reviewer_id = ?, review_note = ?, reviewed_at = ? WHERE id = ?', appStatus, req.user.id, note, now(), a.id);

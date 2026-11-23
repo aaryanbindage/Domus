@@ -180,6 +180,9 @@ CREATE TABLE IF NOT EXISTS audit (
 const hasColumn = (table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
 if (!hasColumn('users', 'chain_address')) db.exec('ALTER TABLE users ADD COLUMN chain_address TEXT');
 if (!hasColumn('ledger', 'chain_tx')) db.exec('ALTER TABLE ledger ADD COLUMN chain_tx TEXT');
+for (const col of ['guardian_name TEXT', 'guardian_email TEXT', 'guardian_token TEXT', 'guardian_consent_at INTEGER', 'guardian_declined_at INTEGER']) {
+  if (!hasColumn('applications', col.split(' ')[0])) db.exec(`ALTER TABLE applications ADD COLUMN ${col}`);
+}
 if (!hasColumn('laws', 'area')) db.exec("ALTER TABLE laws ADD COLUMN area TEXT NOT NULL DEFAULT 'Citizen Legislation'");
 
 const cache = new Map();

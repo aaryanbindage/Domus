@@ -6,6 +6,7 @@ import { mailConfigured, verifyMail } from './mail.js';
 import { seed, syncLaws } from './seed.js';
 import { loadSession, csrf } from './auth.js';
 import account, { secure } from './routes/account.js';
+import guardian from './routes/guardian.js';
 import gov from './routes/gov.js';
 import wallet from './routes/wallet.js';
 import market from './routes/market.js';
@@ -47,6 +48,7 @@ app.post('/api/chain/rpc', async (req, res) => {
   }
 });
 app.get('/api/chain', (_req, res) => res.json(chain.chainInfo()));
+app.use('/guardian', guardian); // emailed consent links for under-13 applicants (no account, no /api)
 app.use('/api', csrf);
 app.use('/api/account', account);
 app.use('/api/secure', secure);

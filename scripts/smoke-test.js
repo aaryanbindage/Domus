@@ -140,6 +140,37 @@ async function main() {
     r = await passportCheck(bob, alice.passportSvg);
     ok(r.status === 403 && /different citizen/.test(r.data.error), "someone else's passport is rejected");
 
+    // Under 13: a parent or guardian must consent by email before a registrar can approve.
+    {
+      const kid = new Client('kid');
+      r = await kid.post('/api/account/register', { username: 'kid', displayName: 'Kid', email: 'kid@example.com', password: 'kid-pass-12345' });
+      await kid.post('/api/account/verify-email', { code: r.data.devCode });
+      const kidApp = async (extra) => {
+        await kid.get('/api/account/liveness');
+        const f = new FormData();
+        Object.entries({ legalName: 'Kid Example', dob: `${new Date().getFullYear() - 10}-01-01`, country: 'Testland', docType: 'birth_certificate', docNumber: 'BC-998877', liveCapture: '1', ...extra }).forEach(([k, v]) => f.append(k, v));
+        f.append('document', new Blob([PNG], { type: 'image/png' }), 'd.png'); f.append('selfie', new Blob([PNG], { type: 'image/png' }), 's.png');
+        return kid.post('/api/account/application', f);
+      };
+      r = await kidApp({});
+      ok(r.status === 400 && /guardian/i.test(r.data.error), 'an under-13 application needs a parent or guardian');
+      r = await kidApp({ guardianName: 'Pat Parent', guardianEmail: 'kid@example.com' });
+      ok(r.status === 400 && /own email/.test(r.data.error), "the guardian's email cannot be the child's own");
+      r = await kidApp({ guardianName: 'Pat Parent', guardianEmail: 'pat@example.com' });
+      ok(r.status === 200 && r.data.guardianEmailed && r.data.devGuardianLink, 'under-13 application accepted and the guardian emailed');
+      const link = new URL(r.data.devGuardianLink).pathname;
+      const kidId = (await alice.get('/api/admin/applications')).data.find((a) => a.username === 'kid');
+      ok(kidId.flags.some((f) => f.code === 'under_13') && kidId.flags.some((f) => f.code === 'no_photo_document'), 'reviewer sees under-13 and no-photo-document flags');
+      r = await alice.post(`/api/admin/applications/${kidId.id}/decide`, { decision: 'approve' });
+      ok(r.status === 400 && /consent/.test(r.data.error), 'registrar cannot approve before the guardian consents');
+      const page = await fetch(`${BASE}${link}`).then((x) => x.text());
+      ok(/Kid Example/.test(page) && /no cash value/.test(page) && /I consent/.test(page), 'guardian page explains what joining involves');
+      ok((await fetch(`${BASE}/guardian/not-a-real-token`)).status === 404, 'a made-up consent link is refused');
+      await fetch(`${BASE}${link}`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'choice=consent' });
+      r = await alice.post(`/api/admin/applications/${kidId.id}/decide`, { decision: 'approve' });
+      ok(r.status === 200, 'after guardian consent the registrar can approve');
+    }
+
     console.log('Ultra-secure operations');
     r = await alice.post('/api/wallet/send', { params: { to: 'bob', amount: 10 } });
     ok(r.status === 403 && r.data.need === 'access', 'transfer without .access key is refused');

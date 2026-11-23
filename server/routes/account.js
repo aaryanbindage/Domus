@@ -11,6 +11,7 @@ import { h, str, bad, forbidden, rateLimit, memoryUpload, saveImage, oneOf } fro
 import { grantCitizenship, registerWallet, balance } from '../ledger.js';
 import { verifyLink } from '../chain.js';
 import { sendMail } from '../mail.js';
+import { askGuardian } from './guardian.js';
 import { newPassportNumber, passportSvg, extractToken, readPassportToken } from '../passport.js';
 
 const r = Router();
@@ -124,9 +125,18 @@ r.post('/application', requireAuth, appUpload, h(async (req, res) => {
   const legalName = str(req.body.legalName, 'Legal name', { min: 3, max: 100 });
   const dob = str(req.body.dob, 'Date of birth', { pattern: /^\d{4}-\d{2}-\d{2}$/ });
   const age = (now() - Date.parse(dob)) / (365.25 * 864e5);
-  if (!(age >= 13 && age < 125)) throw bad('You must be at least 13 years old');
+  if (!(age > 0 && age < 125)) throw bad('Enter your real date of birth');
+  // Under 13, a parent or guardian must consent by email before approval (Minors Protection Act).
+  let guardian = null;
+  if (age < 13) {
+    guardian = {
+      name: str(req.body.guardianName, "Parent or guardian's name", { min: 3, max: 100 }),
+      email: str(req.body.guardianEmail, "Parent or guardian's email", { max: 200, pattern: EMAIL }).toLowerCase(),
+    };
+    if (guardian.email === req.user.email) throw bad('Your parent or guardian must use their own email address, not yours');
+  }
   const country = str(req.body.country, 'Issuing country', { min: 2, max: 56 });
-  const docType = oneOf(req.body.docType, 'Document type', ['passport', 'national_id', 'drivers_license']);
+  const docType = oneOf(req.body.docType, 'Document type', ['passport', 'national_id', 'drivers_license', 'student_id', 'birth_certificate']);
   const docNumber = str(req.body.docNumber, 'Document number', { min: 4, max: 30 });
   const doc = req.files?.document?.[0];
   const selfie = req.files?.selfie?.[0];
@@ -154,21 +164,27 @@ r.post('/application', requireAuth, appUpload, h(async (req, res) => {
       .filter((a) => hamming(a.selfie_dhash, dhash) <= 8);
     if (near.length) flags.push({ code: 'similar_selfie', detail: `Selfie resembles user(s) ${near.map((n) => n.user_id).join(', ')} (perceptual hash — weak signal, compare visually)` });
   }
+  if (guardian) flags.push({ code: 'under_13', detail: `Applicant is under 13. ${guardian.name} (${guardian.email}) must consent by email before approval.` });
+  if (docType === 'birth_certificate') flags.push({ code: 'no_photo_document', detail: 'A birth certificate has no photo, so the selfie cannot be matched to the document' });
   const live_capture = req.body.liveCapture === '1';
   if (!live_capture) flags.push({ code: 'uploaded_selfie', detail: 'Selfie was uploaded from a file, not captured live' });
 
   const docName = saveImage(doc.buffer, PRIVATE_DIR);
   const selfieName = saveImage(selfie.buffer, PRIVATE_DIR);
-  tx(() => {
-    q.run(`INSERT INTO applications (user_id, legal_name, dob, country, doc_type, doc_hmac, doc_last4, person_hmac, doc_image, selfie_image, live_capture, liveness_phrase, selfie_dhash, ip_hmac, flags, created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+  const appId = tx(() => {
+    const info = q.run(`INSERT INTO applications (user_id, legal_name, dob, country, doc_type, doc_hmac, doc_last4, person_hmac, doc_image, selfie_image, live_capture, liveness_phrase, selfie_dhash, ip_hmac, flags, guardian_name, guardian_email, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     req.user.id, legalName, dob, country, docType, docHmac, docNumber.replace(/\W/g, '').slice(-4), personHmac, docName, selfieName,
-    live_capture, live.phrase, dhash, ipHmac, JSON.stringify(flags), now());
+    live_capture, live.phrase, dhash, ipHmac, JSON.stringify(flags), guardian?.name ?? null, guardian?.email ?? null, now());
     q.run("UPDATE users SET status = 'review', legal_name = ?, dob = ? WHERE id = ?", legalName, dob, req.user.id);
     q.run('DELETE FROM liveness WHERE user_id = ?', req.user.id);
+    return Number(info.lastInsertRowid);
   });
   audit(req.user.id, 'application_submitted', { flags: flags.map((f) => f.code) });
-  res.json({ ok: true });
+  if (!guardian) return res.json({ ok: true });
+  // The application is saved either way; a failed email can be resent from the status page.
+  const link = await askGuardian(appId).catch(() => null);
+  res.json({ ok: true, guardianEmailed: !!link, devGuardianLink: DEV ? link : undefined });
 }));
 
 function hamming(a, b) {
@@ -178,9 +194,18 @@ function hamming(a, b) {
 }
 
 r.get('/application', requireAuth, (req, res) => {
-  const a = q.get('SELECT id, legal_name, country, doc_type, status, review_note, created_at, reviewed_at FROM applications WHERE user_id = ? ORDER BY id DESC LIMIT 1', req.user.id);
+  const a = q.get(`SELECT id, legal_name, country, doc_type, status, review_note, created_at, reviewed_at, guardian_name, guardian_email, guardian_consent_at
+    FROM applications WHERE user_id = ? ORDER BY id DESC LIMIT 1`, req.user.id);
   res.json({ application: a || null });
 });
+
+r.post('/guardian/resend', requireAuth, h(async (req, res) => {
+  const a = q.get("SELECT id FROM applications WHERE user_id = ? AND status = 'pending' AND guardian_email IS NOT NULL AND guardian_consent_at IS NULL ORDER BY id DESC LIMIT 1", req.user.id);
+  if (!a) throw bad('No consent request is waiting');
+  rateLimit(`guardian-resend:${req.user.id}`, 3, 60 * 60e3);
+  const link = await askGuardian(a.id);
+  res.json({ ok: true, devGuardianLink: DEV ? link : undefined });
+}));
 
 // ---------------------------------------------------------------- passport + .access key issuance
 // The browser generates the ECDSA key pair, encrypts the private key with the account

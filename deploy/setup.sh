@@ -22,6 +22,13 @@ if [ -z "$DOMAIN" ]; then
 fi
 echo "==> Domain: $DOMAIN"
 
+# Small machines (e.g. the 1 GB E2.1.Micro) get 2 GB of swap so installs and the chain fit.
+if [ "$(awk '/MemTotal/ {print $2}' /proc/meminfo)" -lt 2000000 ] && ! swapon --show | grep -q /swapfile; then
+  echo "==> Adding 2 GB swap"
+  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
+  grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
 echo "==> Packages (Node.js 22, Caddy)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q

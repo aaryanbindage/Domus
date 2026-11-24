@@ -109,7 +109,7 @@ main { min-height: 70vh; padding-block: 28px 56px; }
 .card-head h3, .card-head h2 { margin: 0; }
 .card.link { transition: border-color .12s, transform .12s; color: inherit; display: block; text-decoration: none !important; }
 .card.link:hover { border-color: var(--accent); transform: translateY(-1px); }
-.card.link.stack { display: grid; } /* keep stacked link cards stacked (title above description) */
+.card.link.stack { display: grid; align-content: start; } /* keep stacked link cards stacked (title above description) */
 .list > * + * { border-top: 1px solid var(--border); }
 .list-item { padding: 14px 20px; display: flex; gap: 12px; align-items: flex-start; }
 a.list-item { color: inherit; text-decoration: none !important; } a.list-item:hover { background: var(--surface-2); }

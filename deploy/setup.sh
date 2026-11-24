@@ -111,6 +111,9 @@ done < /etc/domus.env
 cd /opt/domus && exec sudo -E -u domus node --no-warnings=ExperimentalWarning scripts/make-admin.js "$@"
 ADMIN
 chmod 755 /usr/local/bin/domus-admin
+# `sudo domus-verify <username> --name "Legal Name" --dob YYYY-MM-DD` approves someone met in person.
+sed 's#scripts/make-admin.js#scripts/verify-in-person.js#' /usr/local/bin/domus-admin > /usr/local/bin/domus-verify
+chmod 755 /usr/local/bin/domus-verify
 
 cat > /etc/caddy/Caddyfile <<CADDY
 $DOMAIN {
@@ -139,6 +142,7 @@ if systemctl is-active --quiet domus; then
   echo "  logs:                         journalctl -u domus -f"
   echo "  settings:                     sudo nano $ENV_FILE, then sudo systemctl restart domus"
   echo "  make yourself Head of State:  sudo domus-admin <username> --approve"
+  echo "  verify someone in person:     sudo domus-verify <username> --name \"Legal Name\" --dob YYYY-MM-DD"
   echo "  back up:                      $DATA (database, server keys, blockchain)"
 else
   echo "Domus failed to start:"; journalctl -u domus -n 40 --no-pager; exit 1

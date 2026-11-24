@@ -60,7 +60,8 @@ app.use('/api/admin', admin);
 app.get('/api/server-key', (_req, res) => res.json({ algorithm: 'Ed25519', fingerprint: SERVER_KEY_FINGERPRINT, publicKey: SERVER_PUBLIC_PEM }));
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
-app.use(express.static(path.join(ROOT, 'public'), { index: 'index.html', maxAge: DEV ? 0 : '1h' }));
+// max-age 0: browsers revalidate with the ETag, so a deploy shows up at once.
+app.use(express.static(path.join(ROOT, 'public'), { index: 'index.html', maxAge: 0 }));
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, _next) => {

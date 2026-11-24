@@ -57,6 +57,7 @@ const CONSTITUTION = `# Constitution of ${N.name}
 1. The Head of State gives or withholds assent to bills that pass a national vote. A withheld assent must be published with reasons.
 2. The Head of State appoints officials to departments, and may dismiss them.
 3. The Head of State may issue Executive Orders to run the government, but an Order may not create an offence, levy a charge, or override an Act.
+4. When the office of Head of State is vacant, the National Council chooses the next Head of State from the citizens who apply, by a majority of its members.
 
 ## Article VI — The Supreme Tribunal
 1. The Tribunal interprets this Constitution and decides disputes.
@@ -363,7 +364,7 @@ export function buildLaws() {
       ['Time', 'Times are measured in Coordinated Universal Time (UTC).'],
     ]),
     act('Government Departments Act', GOV, 'president', 'Establishes the departments of State and their duties.', [
-      ['Departments', 'The departments are: Office of the Head of State; National Assembly; Supreme Tribunal; Citizenship & Identity; Treasury & Mint; Commerce; Justice; Digital Security; National Archives & Public Records; Communications; Education & Culture; Foreign Affairs.'],
+      ['Departments', 'The departments are: Office of the Head of State; National Assembly; National Council; Supreme Tribunal; Citizenship & Identity; Treasury & Mint; Commerce; Justice; Digital Security; National Archives & Public Records; Applications Office; Communications; Education & Culture; Foreign Affairs.'],
       ['Mandates', 'Each department\'s mission and services are published on its page and bind its officials.'],
       ['Creation and abolition', 'A department may be created, merged or abolished only by Act.'],
     ]),
@@ -371,7 +372,19 @@ export function buildLaws() {
       ['Powers', 'Assent and veto of bills; appointment and dismissal of officials; Executive Orders; suspension of citizens under law.'],
       ['Signatures', 'Appointments and suspensions must be signed with the Head of State\'s .access key and are published in the Gazette.'],
       ['Limits', 'The Head of State may not alter the ledger, view private keys, or override a ruling of the Supreme Tribunal.'],
-      ['Succession', 'If the office is vacant, the longest-serving official acts as Head of State until an appointment is made under the Elections Act or by Act.'],
+      ['Succession', 'The Head of State may resign at any time once the National Council has at least one member. While the office is vacant, any citizen may apply through the Applications Office, and the National Council chooses by a majority of its members, not counting a member who is a candidate.'],
+    ]),
+    act('National Council Act', GOV, 'council', 'Composition, powers and procedure of the National Council.', [
+      ['Composition', 'The National Council has seven seats: a Chair and six Council Members, appointed by the Head of State from citizens who apply through the Applications Office.'],
+      ['Powers', '1. The Council advises the government and may question any official in the open forum.\n2. When the office of Head of State is vacant, the Council chooses the next Head of State.'],
+      ['Choosing a Head of State', 'Each candidate is put to a vote of the Council. A candidate is chosen when more than half of the members, not counting a member who is the candidate, vote in favour. A candidate who can no longer reach that majority is not chosen. Votes are signed with each member\'s .access key and published.'],
+      ['Leaving the Council', 'A member may resign at any time. The Head of State may dismiss a member, and the dismissal is published in the Gazette.'],
+    ]),
+    act('Public Offices and Appointments Act', ETH, 'appointments', 'How citizens apply for public office and who appoints them.', [
+      ['Open offices', 'The Applications Office publishes every public office, its number of seats and its vacancies. Any citizen may apply for a vacant seat with a written statement.'],
+      ['Appointing authority', '1. The Head of State: by the National Council.\n2. Heads of department and Council seats: by the Head of State.\n3. Deputies and officers: by the head of the department or the Head of State.'],
+      ['Fair process', 'No one may decide their own application. A rejection must give reasons to the applicant. A citizen may hold one office at a time and have at most three applications open.'],
+      ['Signatures and publication', 'Every appointment and Council vote is signed with the decider\'s .access key and published in the Gazette.'],
     ]),
     act('National Symbols Act', GOV, 'education', 'The seal, motto, colours and currency symbol of the nation.', [
       ['Seal', 'The national seal is a gold five-pointed star within a double gold ring on a navy field.'],

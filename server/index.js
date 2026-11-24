@@ -3,10 +3,11 @@ import path from 'node:path';
 import { ROOT, PORT, DEV, NATION, PUBLIC_URL } from './config.js';
 import './db.js';
 import { mailConfigured, verifyMail } from './mail.js';
-import { seed, syncLaws } from './seed.js';
+import { seed, syncLaws, syncOffices } from './seed.js';
 import { loadSession, csrf } from './auth.js';
 import account, { secure } from './routes/account.js';
 import guardian from './routes/guardian.js';
+import offices from './routes/offices.js';
 import gov from './routes/gov.js';
 import wallet from './routes/wallet.js';
 import market from './routes/market.js';
@@ -16,6 +17,7 @@ import { SERVER_PUBLIC_PEM, SERVER_KEY_FINGERPRINT } from './security.js';
 import * as chain from './chain.js';
 
 seed();
+syncOffices(); // before the laws, which refer to the departments it adds
 syncLaws();
 
 const app = express();
@@ -51,6 +53,7 @@ app.get('/api/chain', (_req, res) => res.json(chain.chainInfo()));
 app.use('/guardian', guardian); // emailed consent links for under-13 applicants (no account, no /api)
 app.use('/api', csrf);
 app.use('/api/account', account);
+app.use('/api/offices', offices);
 app.use('/api/secure', secure);
 app.use('/api/gov', gov);
 app.use('/api/wallet', wallet);

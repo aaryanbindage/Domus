@@ -10,7 +10,9 @@ if (!u) { console.error(`No account named "${username}"`); process.exit(1); }
 
 tx(() => {
   const dept = q.get("SELECT id FROM departments WHERE slug = 'president'");
-  q.run("UPDATE users SET role = 'admin', department_id = ?, official_title = 'Head of State' WHERE id = ?", dept?.id, u.id);
+  const hos = q.get("SELECT id FROM positions WHERE level = 'head_of_state'");
+  q.run('UPDATE users SET position_id = NULL WHERE position_id = ?', hos?.id ?? -1);
+  q.run("UPDATE users SET role = 'admin', department_id = ?, official_title = 'Head of State', position_id = ? WHERE id = ?", dept?.id, hos?.id ?? null, u.id);
   if (flags.includes('--approve') && ['documents', 'review', 'rejected'].includes(u.status)) {
     const a = q.get("SELECT * FROM applications WHERE user_id = ? ORDER BY id DESC LIMIT 1", u.id);
     if (a) q.run("UPDATE applications SET status = 'approved', review_note = 'Founding approval', reviewed_at = ? WHERE id = ?", Date.now(), a.id);

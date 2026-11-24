@@ -90,7 +90,7 @@ r.post('/users/role', requireAccess('admin.role', (req) => req.body.params), (re
   if (u.id === req.user.id && role !== 'admin') throw bad('You cannot demote yourself');
   const dept = departmentId ? q.get('SELECT id, name FROM departments WHERE id = ?', Number(departmentId)) : null;
   const t = role === 'member' ? null : str(title, 'Title', { min: 3, max: 80 });
-  q.run('UPDATE users SET role = ?, department_id = ?, official_title = ? WHERE id = ?', role, role === 'member' ? null : dept?.id, t, u.id);
+  q.run('UPDATE users SET role = ?, department_id = ?, official_title = ?, position_id = NULL WHERE id = ?', role, role === 'member' ? null : dept?.id, t, u.id);
   gazette('appointment', role === 'member' ? `@${u.username} has left public office` : `@${u.username} appointed ${t}${dept ? `, ${dept.name}` : ''}`, '', `user:${u.id}`);
   audit(req.user.id, 'role_changed', { user: u.id, role, dept: dept?.id });
   res.json({ ok: true });

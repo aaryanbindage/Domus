@@ -297,7 +297,7 @@ r.post('/password', requireAccess('account.password', () => ({})), h(async (req,
 
 // ---------------------------------------------------------------- secure-operation challenges
 export const secure = Router();
-const OPS = ['account.keytest', 'wallet.send', 'wallet.break', 'market.buy', 'bill.vote', 'account.password', 'admin.role', 'admin.status', 'citizenship.decide'];
+const OPS = ['account.keytest', 'wallet.send', 'wallet.break', 'market.buy', 'bill.vote', 'account.password', 'admin.role', 'admin.status', 'citizenship.decide', 'office.decide', 'office.vote'];
 secure.get('/epoch', (_req, res) => res.json(epochInfo()));
 secure.post('/challenge', requireCitizen, (req, res) => {
   const op = oneOf(req.body.op, 'op', OPS);

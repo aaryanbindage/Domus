@@ -2,7 +2,7 @@ import { html, mount, icon, num, fmtDate, ago, until, statusBadge } from '../ui.
 import { api } from '../api.js';
 import { user, nation, isCitizen } from '../store.js';
 
-const DEPT_ICONS = { crown: 'crown', columns: 'columns', scale: 'scale', id: 'id', coin: 'coin', store: 'store', gavel: 'gavel', shield: 'shield', archive: 'archive', megaphone: 'megaphone', book: 'book', globe: 'globe' };
+const DEPT_ICONS = { crown: 'crown', columns: 'columns', scale: 'scale', id: 'id', coin: 'coin', store: 'store', gavel: 'gavel', shield: 'shield', archive: 'archive', megaphone: 'megaphone', book: 'book', globe: 'globe', users: 'users', file: 'file' };
 export const deptIcon = (name) => icon(DEPT_ICONS[name] || 'building');
 
 export async function home(view) {

@@ -92,6 +92,7 @@ const STATUS_BADGE = {
   pending: 'warn', approved: 'ok', rejected: 'bad', banned: 'bad', citizen: 'ok', suspended: 'bad', review: 'warn',
   escrow: 'warn', shipped: 'blue', completed: 'ok', refunded: '', disputed: 'bad', active: 'ok', sold_out: '', paused: 'warn', removed: 'bad',
   open: 'warn', fulfilled: 'ok', denied: 'bad', in_force: 'ok', repealed: 'bad',
+  accepted: 'ok', elected: 'ok', 'not elected': 'bad',
 };
 export const statusBadge = (s) => html`<span class="badge ${STATUS_BADGE[s] ?? ''}">${titleCase(s)}</span>`;
 

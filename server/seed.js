@@ -14,6 +14,10 @@ const DEPARTMENTS = [
     'Make law through direct citizen participation.',
     `${N.short} is a direct democracy. Every citizen sits in the National Assembly: any citizen may table a bill, and once it collects ${SECURITY.billSignatureThreshold} sponsor signatures it goes to a ${SECURITY.billVotingDays}-day national vote. Votes are signed with each citizen's .access key.`,
     [['Browse bills', '#/laws/bills'], ['Propose a bill', '#/laws/bills/new'], ['Legislative record', '#/records/gazette?kind=legislation']]],
+  ['council', 'National Council', 'Council', 'legislative', 'Chair of the Council', 'users',
+    'Advise the government, hold it to account, and choose the Head of State when the office is vacant.',
+    `The National Council is a body of seven citizens: a Chair and six Council Members, appointed by the Head of State from citizens who apply. When the office of Head of State falls vacant, the Council chooses the next Head of State from the candidates by majority vote. Council debates are held in the open in the Policy & Legislation forum.`,
+    [['Council members & votes', '#/council'], ['Apply for a seat', '#/offices'], ['Policy debate', '#/forum/c/policy']]],
   ['judiciary', 'Supreme Tribunal', 'Tribunal', 'judicial', 'Chief Justice', 'scale',
     'Interpret the Constitution and resolve disputes between citizens.',
     'The Supreme Tribunal hears constitutional questions, appeals of moderation and citizenship decisions, and marketplace disputes escalated from the Department of Commerce.',
@@ -42,6 +46,10 @@ const DEPARTMENTS = [
     'Open government by default.',
     'The Archives publishes the Citizen Registry, the Official Gazette, the public ledger, legislative history and responses to public records requests.',
     [['Public records', '#/records'], ['Request a record', '#/records/requests']]],
+  ['appointments', 'Applications Office', 'Applications', 'agency', 'Director of Appointments', 'file',
+    'Fill every public office fairly and in the open.',
+    `The Applications Office publishes every public office and its vacant seats. Any citizen may apply with a statement. Heads of department and Council seats are appointed by the Head of State; deputies and officers by the head of their department or the Head of State; and the Head of State, when the office is vacant, is chosen by the National Council. Every appointment is published in the Gazette.`,
+    [['Open positions', '#/offices'], ['My applications', '#/offices?tab=mine'], ['Appointments in the Gazette', '#/records/gazette?kind=appointment']]],
   ['communications', 'Department of Communications', 'Communications', 'agency', 'Press Secretary', 'megaphone',
     'Keep citizens informed.',
     'Communications publishes official news and announcements from every department.',
@@ -92,6 +100,47 @@ export function seed() {
     gazette('founding', `${N.name} is founded`, `The Constitution and the founding statute book enter into force.`, null);
   });
   console.log('[seed] departments, news and forum created');
+}
+
+/**
+ * Add departments introduced after founding, and keep the list of public offices (positions)
+ * in step with the departments. Existing seats and their holders are never removed.
+ */
+export function syncOffices() {
+  tx(() => {
+    DEPARTMENTS.forEach(([slug, name, short, branch, head, icon, mission, description, services], i) => {
+      if (!q.get('SELECT 1 FROM departments WHERE slug = ?', slug)) {
+        q.run('INSERT INTO departments (slug, name, short, branch, head_title, mission, description, services, contact, icon, sort) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+          slug, name, short, branch, head, mission, description, JSON.stringify(services.map(([label, href]) => ({ label, href }))), `${slug}@${N.short.toLowerCase()}.gov`, icon, i);
+      } else q.run('UPDATE departments SET sort = ? WHERE slug = ?', i, slug);
+    });
+    for (const d of q.all('SELECT * FROM departments ORDER BY sort')) {
+      positionsFor(d).forEach(([key, title, level, seats, description], i) => {
+        if (!q.get('SELECT 1 FROM positions WHERE key = ?', key)) {
+          q.run('INSERT INTO positions (key, department_id, title, level, seats, description, sort) VALUES (?,?,?,?,?,?,?)', key, d.id, title, level, seats, description, i);
+        }
+      });
+    }
+    // A Head of State appointed before offices existed holds the office.
+    const hos = q.get("SELECT id FROM positions WHERE level = 'head_of_state'");
+    if (!q.get('SELECT 1 FROM users WHERE position_id = ?', hos.id)) {
+      const admin = q.get("SELECT id FROM users WHERE role = 'admin' AND status = 'citizen' AND position_id IS NULL ORDER BY id LIMIT 1");
+      if (admin) q.run('UPDATE users SET position_id = ? WHERE id = ?', hos.id, admin.id);
+    }
+  });
+}
+
+function positionsFor(d) {
+  const k = (s) => `${d.slug}-${s}`;
+  if (d.slug === 'president') return [['head-of-state', 'Head of State', 'head_of_state', 1, `Leads the government of ${N.name}: assents to Acts, appoints officials and issues Executive Orders.`]];
+  if (d.slug === 'council') {
+    return [[k('chair'), 'Chair of the Council', 'head', 1, 'Chairs the National Council, sets its agenda and votes with its members.'],
+      [k('member'), 'Council Member', 'council', 6, 'Advises the government, scrutinises its work and votes to choose a Head of State when the office is vacant.']];
+  }
+  const staff = { judiciary: ['Justice of the Tribunal', 4], assembly: ['Clerk of the Assembly', 2], citizenship: ['Registrar', 4] }[d.slug] || [`${d.short} Officer`, 4];
+  return [[k('head'), d.head_title, 'head', 1, `Leads the ${d.name} and appoints its deputies and officers.`],
+    [k('deputy'), `Deputy ${d.head_title}`, 'deputy', 1, `Assists the ${d.head_title} and acts for them when they are away.`],
+    [k('staff'), staff[0], 'staff', staff[1], `Carries out the day-to-day work of the ${d.name}.`]];
 }
 
 /**

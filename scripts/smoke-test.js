@@ -287,6 +287,36 @@ async function main() {
     r = await bob.access('bill.vote', { billId, choice: 'no' }, `/api/gov/bills/${billId}/vote`);
     ok(r.status === 400, 'double voting refused');
 
+    console.log('National Council & Applications Office');
+    {
+      let pos = (await bob.get('/api/offices/positions')).data.items;
+      const hosPos = pos.find((p) => p.level === 'head_of_state');
+      const seat = pos.find((p) => p.key === 'council-member');
+      ok(hosPos.holders[0]?.username === 'alice' && seat.seats === 6 && pos.some((p) => p.level === 'staff'), `${pos.length} public offices listed; alice holds Head of State`);
+      await passportCheck(bob);
+      r = await bob.post(`/api/offices/positions/${hosPos.id}/apply`, { statement: 'I would like to lead the nation with care and openness.' });
+      ok(r.status === 400 && /Head of State/.test(r.data.error), 'no applications for Head of State while the office is held');
+      r = await bob.post(`/api/offices/positions/${seat.id}/apply`, { statement: 'I will scrutinise the government and represent new citizens.' });
+      ok(r.status === 200, 'bob applies for a Council seat');
+      const appId = r.data.id;
+      r = await bob.access('office.decide', { applicationId: appId, decision: 'accept', note: '' }, '/api/offices/decide');
+      ok(r.status === 403, 'nobody decides their own application');
+      r = await alice.access('office.decide', { applicationId: appId, decision: 'accept', note: '' }, '/api/offices/decide');
+      ok(r.status === 200, 'Head of State appoints bob to the Council (signed)');
+      r = await bob.get('/api/offices/council');
+      ok(r.data.members.some((m) => m.username === 'bob') && (await bob.get('/api/account/me')).data.user.role === 'official', 'bob sits on the National Council');
+      r = await alice.post('/api/offices/resign', {});
+      ok(r.status === 200 && (await alice.get('/api/account/me')).data.user.role === 'member', 'Head of State resigns; the office is vacant');
+      r = await alice.post(`/api/offices/positions/${hosPos.id}/apply`, { statement: 'I served as founder and ask the Council to choose me again.' });
+      ok(r.status === 200, 'alice stands for Head of State');
+      const cand = r.data.id;
+      r = await alice.access('office.vote', { applicationId: cand, vote: 'yes' }, '/api/offices/vote');
+      ok(r.status === 403, 'only Council members vote, and never on themselves');
+      r = await bob.access('office.vote', { applicationId: cand, vote: 'yes' }, '/api/offices/vote');
+      ok(r.status === 200 && r.data.result === 'elected', 'the Council elects a Head of State by majority');
+      ok((await alice.get('/api/account/me')).data.user.role === 'admin', 'alice is Head of State again');
+    }
+
     console.log('Statute book');
     r = await bob.get('/api/gov/laws');
     ok(r.data.total >= 69 && r.data.kinds.act >= 50 && r.data.areas.length >= 12, `${r.data.total} laws across ${r.data.areas.length} areas`);

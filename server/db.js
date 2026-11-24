@@ -183,6 +183,24 @@ if (!hasColumn('ledger', 'chain_tx')) db.exec('ALTER TABLE ledger ADD COLUMN cha
 for (const col of ['guardian_name TEXT', 'guardian_email TEXT', 'guardian_token TEXT', 'guardian_consent_at INTEGER', 'guardian_declined_at INTEGER']) {
   if (!hasColumn('applications', col.split(' ')[0])) db.exec(`ALTER TABLE applications ADD COLUMN ${col}`);
 }
+if (!hasColumn('users', 'position_id')) db.exec('ALTER TABLE users ADD COLUMN position_id INTEGER');
+// Public offices (seats in departments and the National Council) and applications for them.
+db.exec(`
+CREATE TABLE IF NOT EXISTS positions (
+  id INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE, department_id INTEGER NOT NULL REFERENCES departments(id),
+  title TEXT NOT NULL, level TEXT NOT NULL,            -- head_of_state | council | head | deputy | staff
+  seats INTEGER NOT NULL, description TEXT NOT NULL, sort INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS office_applications (
+  id INTEGER PRIMARY KEY, position_id INTEGER NOT NULL REFERENCES positions(id), user_id INTEGER NOT NULL REFERENCES users(id),
+  statement TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', -- pending | accepted | rejected | withdrawn
+  note TEXT, decided_by INTEGER, created_at INTEGER NOT NULL, decided_at INTEGER
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_office_app ON office_applications(position_id, user_id) WHERE status = 'pending';
+CREATE TABLE IF NOT EXISTS office_votes (
+  application_id INTEGER NOT NULL REFERENCES office_applications(id), user_id INTEGER NOT NULL REFERENCES users(id),
+  vote INTEGER NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (application_id, user_id)
+);`);
 if (!hasColumn('laws', 'area')) db.exec("ALTER TABLE laws ADD COLUMN area TEXT NOT NULL DEFAULT 'Citizen Legislation'");
 
 const cache = new Map();

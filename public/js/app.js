@@ -21,6 +21,7 @@ const ROUTES = [
   ['/market', 'market', 'browse'], ['/market/sell', 'market', 'sell'], ['/market/l/:id', 'market', 'listing'],
   ['/market/orders', 'market', 'orders'], ['/market/orders/:id', 'market', 'order'], ['/market/mine', 'market', 'mine'],
   ['/market/seller/:username', 'market', 'seller'],
+  ['/council', 'offices', 'council'], ['/offices', 'offices', 'offices'],
   ['/admin', 'admin', 'admin'],
 ].map(([pat, mod, fn]) => {
   const keys = [];
@@ -38,7 +39,7 @@ function parseHash() {
 }
 
 // ---------------------------------------------------------------- shell
-const GOV_NAV = [['/', 'Home'], ['/news', 'News'], ['/government', 'Government'], ['/laws', 'Laws'], ['/records', 'Public Records'], ['/forum', 'Forum']];
+const GOV_NAV = [['/', 'Home'], ['/news', 'News'], ['/government', 'Government'], ['/council', 'Council'], ['/offices', 'Offices'], ['/laws', 'Laws'], ['/records', 'Public Records'], ['/forum', 'Forum']];
 const MARKET_NAV = [['/market', 'Browse'], ['/market/sell', 'Sell'], ['/market/orders', 'My orders'], ['/market/mine', 'My listings']];
 let shellMode = null;
 

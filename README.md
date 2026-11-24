@@ -50,7 +50,7 @@ npm start                 # http://localhost:3000
 3. Open **My passport**, generate your key, and **download the `.access` file**. It can't be recovered.
 4. As admin you can now review other applicants (Government console) and appoint officials. Officials in the Department of Citizenship can also review.
 
-`npm test` runs a 69-check end-to-end test of the whole lifecycle against a throwaway database. It covers duplicate-document refusal, forged and foreign passports, parameter tampering, replayed challenges, wrong passwords, under-13 guardian consent, escrow, voting, ledger verification, and the on-chain rules (citizen-only transfers, signatures the Treasury cannot forge, rarity parity, chain-vs-ledger audit).
+`npm test` runs a 80-check end-to-end test of the whole lifecycle against a throwaway database. It covers duplicate-document refusal, forged and foreign passports, parameter tampering, replayed challenges, wrong passwords, under-13 guardian consent, Council elections and office appointments, escrow, voting, ledger verification, and the on-chain rules (citizen-only transfers, signatures the Treasury cannot forge, rarity parity, chain-vs-ledger audit).
 
 **Putting it online for free:** see [DEPLOY.md](DEPLOY.md) (Oracle Cloud Always Free, one command).
 

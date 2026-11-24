@@ -1,4 +1,5 @@
 import express from 'express';
+import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT, PORT, DEV, NATION, PUBLIC_URL } from './config.js';
 import './db.js';
@@ -62,6 +63,20 @@ app.use('/api/forum', forum);
 app.use('/api/admin', admin);
 app.get('/api/server-key', (_req, res) => res.json({ algorithm: 'Ed25519', fingerprint: SERVER_KEY_FINGERPRINT, publicKey: SERVER_PUBLIC_PEM }));
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
+
+// The portal page carries the site's public address in its link-preview and search tags.
+const indexHtml = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8').replaceAll('%PUBLIC_URL%', PUBLIC_URL);
+app.get(['/', '/index.html'], (_req, res) => res.type('html').set('Cache-Control', 'no-cache').send(indexHtml));
+app.get('/robots.txt', (_req, res) => res.type('text').send(`User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /guardian/
+Sitemap: ${PUBLIC_URL}/sitemap.xml
+`));
+// The portal routes by #hash, which search engines ignore, so the home page is the one URL.
+app.get('/sitemap.xml', (_req, res) => res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${PUBLIC_URL}/</loc><changefreq>daily</changefreq></url></urlset>
+`));
 
 // max-age 0: browsers revalidate with the ETag, so a deploy shows up at once.
 app.use(express.static(path.join(ROOT, 'public'), { index: 'index.html', maxAge: 0 }));
